@@ -77,6 +77,7 @@ def test_index_links_manifest_and_registers_worker(monkeypatch):
     assert page.status_code == 200
     assert 'rel="manifest"' in page.text
     assert 'name="theme-color"' in page.text
+    assert "cert-banner" in page.text
 
     script = client.get("/assets/app.js")
     assert "serviceWorker" in script.text

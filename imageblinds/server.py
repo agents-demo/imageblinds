@@ -41,10 +41,14 @@ async def service_worker() -> FileResponse:
 
 @app.get("/ca.crt")
 async def ca_cert() -> FileResponse:
-    path = ROOT / "certs" / "ca.crt"
+    path = ROOT / "certs" / "local.crt"
     if not path.is_file():
-        raise HTTPException(status_code=404, detail="Local CA not generated yet (see README).")
-    return FileResponse(path, media_type="application/x-x509-ca-cert")
+        raise HTTPException(status_code=404, detail="Local certificate not generated yet (see README).")
+    return FileResponse(
+        path,
+        media_type="application/x-x509-ca-cert",
+        filename="imageblinds-ca.crt",
+    )
 
 
 @app.post("/api/analyze")

@@ -12,6 +12,11 @@ const errorPanel = document.getElementById("error-panel");
 const errorBox = document.getElementById("error");
 const speakBtn = document.getElementById("speak-btn");
 const stopBtn = document.getElementById("stop-btn");
+const certBanner = document.getElementById("cert-banner");
+
+if (location.protocol === "http:" && !["localhost", "127.0.0.1"].includes(location.hostname)) {
+  certBanner.hidden = false;
+}
 
 let selectedFile = null;
 let lastDescription = "";

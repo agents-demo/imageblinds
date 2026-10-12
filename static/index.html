@@ -16,6 +16,15 @@
       <p>Pick a JPG photo and let the vision agent describe it.</p>
     </header>
 
+    <section id="cert-banner" class="panel error" hidden>
+      <p>
+        Phone app install needs a trusted certificate.
+        <a href="/ca.crt">Download the certificate</a>, then install it via
+        Settings → Biometrics and security → Other security settings →
+        Install from device storage → CA certificate.
+      </p>
+    </section>
+
     <section id="dropzone" class="panel">
       <input type="file" id="file-input" accept=".jpg,image/jpeg" hidden />
       <button id="choose-btn" type="button">Choose a photo…</button>
