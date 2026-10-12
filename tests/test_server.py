@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import subprocess
+
 from fastapi.testclient import TestClient
 
-from imageblinds import service
+from imageblinds import server, service
 from imageblinds.server import app
 
 
@@ -107,3 +109,80 @@ def test_icons_served(monkeypatch):
         response = client.get(f"/icons/{name}")
         assert response.status_code == 200
         assert response.headers["content-type"] == "image/png"
+
+
+def test_connection_info_lists_phone_addresses(monkeypatch):
+    monkeypatch.setattr(server, "_is_wsl", lambda: False)
+    monkeypatch.setattr(server, "_local_ips", lambda: ["10.1.2.3"])
+    monkeypatch.setattr(server, "_cert_ips", lambda: ["10.1.2.3"])
+
+    info = server.connection_info()
+
+    assert "https://10.1.2.3:8000" in info
+    assert "http://10.1.2.3:8080" in info
+    assert "WARNING" not in info
+
+
+def test_connection_info_warns_when_cert_does_not_cover_ip(monkeypatch):
+    monkeypatch.setattr(server, "_is_wsl", lambda: False)
+    monkeypatch.setattr(server, "_local_ips", lambda: ["10.9.9.9"])
+    monkeypatch.setattr(server, "_cert_ips", lambda: ["10.1.2.3"])
+
+    info = server.connection_info()
+
+    assert "WARNING" in info
+    assert "10.9.9.9" in info
+
+
+def test_connection_info_notes_missing_cert(monkeypatch):
+    monkeypatch.setattr(server, "_is_wsl", lambda: False)
+    monkeypatch.setattr(server, "_local_ips", lambda: [])
+    monkeypatch.setattr(server, "_cert_ips", lambda: [])
+
+    info = server.connection_info()
+
+    assert "certificate" in info.lower() or "cert" in info.lower()
+
+
+def test_cert_ips_parses_subject_alt_name(tmp_path, monkeypatch):
+    cert = tmp_path / "local.crt"
+    key = tmp_path / "local.key"
+    subprocess.run(
+        [
+            "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", str(key), "-out", str(cert), "-days", "1",
+            "-subj", "/CN=test",
+            "-addext", "subjectAltName=IP:10.20.30.40,DNS:localhost",
+        ],
+        capture_output=True,
+        check=True,
+    )
+    monkeypatch.setattr(server, "CERT_PATH", cert)
+
+    assert server._cert_ips() == ["10.20.30.40"]
+
+
+def test_cert_ips_empty_for_missing_cert(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "CERT_PATH", tmp_path / "nope.crt")
+
+    assert server._cert_ips() == []
+
+
+def test_local_ips_are_plain_ipv4():
+    ips = server._local_ips()
+    for ip in ips:
+        assert not ip.startswith(("127.", "169.254."))
+        parts = ip.split(".")
+        assert len(parts) == 4 and all(part.isdigit() for part in parts)
+
+
+def test_startup_banner_printed(capsys, monkeypatch):
+    monkeypatch.setattr(server, "_is_wsl", lambda: False)
+    monkeypatch.setattr(server, "_local_ips", lambda: ["10.1.2.3"])
+    monkeypatch.setattr(server, "_cert_ips", lambda: ["10.1.2.3"])
+
+    with TestClient(app) as client:
+        client.get("/")
+
+    captured = capsys.readouterr()
+    assert "https://10.1.2.3:8000" in captured.out

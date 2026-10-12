@@ -1,8 +1,18 @@
-"""FastAPI server: serves the JS GUI and the image-analysis endpoint."""
+"""FastAPI server: serves the JS GUI and the image-analysis endpoint.
+
+On startup it prints the addresses the app can be reached at (from another
+machine on the network — typically a phone), and warns when the HTTPS
+certificate does not cover the current address (the IP can change between
+Wi-Fi connections).
+"""
 
 from __future__ import annotations
 
+import re
+import socket
+import subprocess
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
@@ -14,10 +24,120 @@ from imageblinds import service
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT / "static"
+CERT_PATH = ROOT / "certs" / "local.crt"
 
 ALLOWED_SUFFIXES = {".jpg", ".jpeg"}
 
-app = FastAPI(title="ImageBlinds")
+
+def _is_wsl() -> bool:
+    try:
+        return "microsoft" in (Path("/proc/version").read_text().lower() if Path("/proc/version").exists() else "")
+    except OSError:
+        return False
+
+
+def _windows_wifi_ips() -> list[str]:
+    """Under WSL the phone reaches the Windows host, not the WSL IP."""
+    if not _is_wsl():
+        return []
+    exe = Path("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe")
+    if not exe.is_file():
+        return []
+    try:
+        proc = subprocess.run(
+            [
+                str(exe),
+                "-NoProfile",
+                "-Command",
+                "Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -match 'Wi-Fi' } "
+                "| Select-Object -ExpandProperty IPAddress",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    ips = []
+    for line in proc.stdout.replace("\r", "").splitlines():
+        ip = line.strip()
+        if ip and not ip.startswith(("127.", "169.254.")):
+            ips.append(ip)
+    return ips
+
+
+def _local_ips() -> list[str]:
+    """Best-effort list of this machine's IPv4 addresses (LAN-facing first)."""
+    ips: list[str] = []
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("8.8.8.8", 80))
+        ip = probe.getsockname()[0]
+        if ip and not ip.startswith(("127.", "169.254.")):
+            ips.append(ip)
+    except OSError:
+        pass
+    finally:
+        probe.close()
+    try:
+        for ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+            if ip not in ips and not ip.startswith(("127.", "169.254.")):
+                ips.append(ip)
+    except OSError:
+        pass
+    return ips
+
+
+def _cert_ips() -> list[str]:
+    """IP addresses covered by the HTTPS certificate's subjectAltName."""
+    if not CERT_PATH.is_file():
+        return []
+    try:
+        proc = subprocess.run(
+            ["openssl", "x509", "-in", str(CERT_PATH), "-noout", "-ext", "subjectAltName"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return re.findall(r"IP Address:([\d.]+)", proc.stdout)
+
+
+def connection_info() -> str:
+    """The startup banner: where to connect from, and cert-coverage notes."""
+    ips = _windows_wifi_ips() if _is_wsl() else _local_ips()
+    lines = ["ImageBlinds is running. Connect from:"]
+    if _is_wsl():
+        lines.append("  (WSL: the addresses below are the Windows host's Wi-Fi addresses)")
+    if not ips:
+        lines.append("  No LAN address detected (offline?). Local use: http://localhost:8080")
+    for ip in ips:
+        lines.append(f"  Phone (HTTPS, install as app): https://{ip}:8000")
+        lines.append(f"  Phone (plain HTTP, no install): http://{ip}:8080")
+    cert_ips = _cert_ips()
+    if cert_ips:
+        covered = set(cert_ips) & set(ips)
+        if not covered:
+            lines.append(
+                "  WARNING: the certificate covers " + ", ".join(cert_ips)
+                + " but the current address(es) are not included."
+                + " The IP changed - regenerate certs/local.crt (see README) and re-install it on the phone."
+            )
+        else:
+            lines.append("  Certificate covers: " + ", ".join(cert_ips))
+    else:
+        lines.append("  No certificate found at certs/local.crt - HTTPS will not work (see README).")
+    return "\n".join(lines)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    print(connection_info(), flush=True)
+    yield
+
+
+app = FastAPI(title="ImageBlinds", lifespan=lifespan)
 
 app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 app.mount("/examples", StaticFiles(directory=STATIC_DIR / "examples"), name="examples")
@@ -41,11 +161,10 @@ async def service_worker() -> FileResponse:
 
 @app.get("/ca.crt")
 async def ca_cert() -> FileResponse:
-    path = ROOT / "certs" / "local.crt"
-    if not path.is_file():
+    if not CERT_PATH.is_file():
         raise HTTPException(status_code=404, detail="Local certificate not generated yet (see README).")
     return FileResponse(
-        path,
+        CERT_PATH,
         media_type="application/x-x509-ca-cert",
         filename="imageblinds-ca.crt",
     )
