@@ -129,6 +129,10 @@ button:disabled {
   line-height: 1.5;
 }
 
+#result-panel .actions {
+  margin-top: 0.75rem;
+}
+
 .error {
   background: var(--error-bg);
   border-color: var(--error-text);

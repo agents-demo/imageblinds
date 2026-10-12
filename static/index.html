@@ -37,10 +37,14 @@
 
     <section id="result-panel" class="panel" hidden>
       <h2>The agent says:</h2>
-      <p id="result"></p>
+      <p id="result" aria-live="polite"></p>
+      <div class="actions">
+        <button id="speak-btn" type="button">Read aloud</button>
+        <button id="stop-btn" type="button">Stop</button>
+      </div>
     </section>
 
-    <section id="error-panel" class="panel error" hidden>
+    <section id="error-panel" class="panel error" hidden aria-live="assertive">
       <p id="error"></p>
     </section>
   </main>

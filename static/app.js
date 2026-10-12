@@ -10,16 +10,59 @@ const resultPanel = document.getElementById("result-panel");
 const resultBox = document.getElementById("result");
 const errorPanel = document.getElementById("error-panel");
 const errorBox = document.getElementById("error");
+const speakBtn = document.getElementById("speak-btn");
+const stopBtn = document.getElementById("stop-btn");
 
 let selectedFile = null;
+let lastDescription = "";
+
+const synth = window.speechSynthesis || null;
+let voice = null;
+
+function pickVoice() {
+  if (!synth) return;
+  const voices = synth.getVoices();
+  if (!voices.length) return;
+  voice =
+    voices.find((item) => item.lang && item.lang.toLowerCase().startsWith("en")) ||
+    voices.find((item) => item.default) ||
+    voices[0];
+}
+
+function speak(text) {
+  if (!synth || !text) return;
+  synth.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  if (voice) utterance.voice = voice;
+  utterance.rate = 1;
+  utterance.pitch = 1;
+  synth.speak(utterance);
+}
+
+function stopSpeaking() {
+  if (synth) synth.cancel();
+}
+
+if (synth) {
+  synth.onvoiceschanged = pickVoice;
+  pickVoice();
+} else {
+  speakBtn.hidden = true;
+  stopBtn.hidden = true;
+}
+
+speakBtn.addEventListener("click", () => speak(lastDescription));
+stopBtn.addEventListener("click", stopSpeaking);
 
 function showError(message) {
   errorBox.textContent = message;
   errorPanel.hidden = false;
+  speak(message);
 }
 
 function clearError() {
   errorPanel.hidden = true;
+  stopSpeaking();
 }
 
 function setFile(file) {
@@ -89,8 +132,10 @@ async function analyze() {
       showError(data.error || data.detail || `Server error (${response.status}).`);
       return;
     }
-    resultBox.textContent = data.description;
+    lastDescription = data.description;
+    resultBox.textContent = lastDescription;
     resultPanel.hidden = false;
+    speak(lastDescription);
   } catch (err) {
     showError(`Could not reach the server: ${err.message}`);
   } finally {

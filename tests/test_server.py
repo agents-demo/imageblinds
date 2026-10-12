@@ -57,3 +57,15 @@ def test_index_serves_gui(monkeypatch):
     response = client.get("/")
     assert response.status_code == 200
     assert "ImageBlinds" in response.text
+
+
+def test_index_includes_text_to_speech_controls(monkeypatch):
+    client = _client(monkeypatch)
+    page = client.get("/")
+    assert page.status_code == 200
+    assert "Read aloud" in page.text
+    assert 'aria-live="polite"' in page.text
+
+    script = client.get("/assets/app.js")
+    assert script.status_code == 200
+    assert "speechSynthesis" in script.text
