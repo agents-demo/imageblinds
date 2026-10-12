@@ -27,7 +27,8 @@
 
     <section id="dropzone" class="panel">
       <input type="file" id="file-input" accept=".jpg,image/jpeg" hidden />
-      <button id="choose-btn" type="button">Choose a photo…</button>
+      <button id="choose-btn" type="button">photo</button>
+      <button id="camera-btn" type="button">camera</button>
       <span class="hint">or drop a .jpg here</span>
 
       <div class="examples">
@@ -35,6 +36,11 @@
         <button type="button" class="example-btn" data-example="chair.jpg">chair.jpg</button>
         <button type="button" class="example-btn" data-example="fridge.jpg">fridge.jpg</button>
       </div>
+    </section>
+
+    <section id="camera-panel" class="panel" hidden>
+      <video id="camera-view" autoplay playsinline muted></video>
+      <p class="hint">Point the camera, then press Analyze to send the picture.</p>
     </section>
 
     <section id="preview-panel" class="panel" hidden>

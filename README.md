@@ -1,6 +1,6 @@
 # ImageBlinds
 
-A small JS GUI: pick a `.jpg` photo, send it to an
+A small JS GUI: pick a `.jpg` photo or shoot one with the phone camera, send it to an
 [openjiuwen agent-core](https://github.com/openJiuwen-ai/agent-core) vision agent, and show
 (and read aloud) the model's textual description of the image. Modeled after
 [taketwo](https://github.com/agents-demo/taketwo) (multimodal `DeepAgent` reading images via
@@ -21,8 +21,14 @@ Requires Python 3.11–3.13.
 uv run uvicorn imageblinds.server:app --reload
 ```
 
-Open http://localhost:8000 — pick `chair.jpg` / `fridge.jpg` (or any JPG), press **Analyze**.
-The result is shown and spoken aloud (Web Speech API; "Read aloud" repeats it).
+Open http://localhost:8000 — press **photo** to pick `chair.jpg` / `fridge.jpg` (or any JPG),
+or **camera** to use the device camera (the app asks for permission; on phones the rear
+camera is used). Then press **Analyze**: with the camera open, the live frame is captured and
+sent as `camera.jpg`; otherwise the selected photo is sent. The result is shown and spoken
+aloud (Web Speech API; "Read aloud" repeats it).
+
+> The service worker caches assets (cache-first). After an app update, reload the page
+> twice: the first reload installs the new service worker, the second picks up the new assets.
 
 ## Phone + PWA install (one-time preparation)
 

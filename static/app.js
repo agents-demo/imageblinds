@@ -1,5 +1,8 @@
 const fileInput = document.getElementById("file-input");
 const chooseBtn = document.getElementById("choose-btn");
+const cameraBtn = document.getElementById("camera-btn");
+const cameraPanel = document.getElementById("camera-panel");
+const cameraView = document.getElementById("camera-view");
 const dropzone = document.getElementById("dropzone");
 const previewPanel = document.getElementById("preview-panel");
 const preview = document.getElementById("preview");
@@ -20,6 +23,8 @@ if (location.protocol === "http:" && !["localhost", "127.0.0.1"].includes(locati
 
 let selectedFile = null;
 let lastDescription = "";
+let cameraStream = null;
+let cameraActive = false;
 
 const synth = window.speechSynthesis || null;
 let voice = null;
@@ -70,8 +75,19 @@ function clearError() {
   stopSpeaking();
 }
 
+function stopCamera() {
+  cameraActive = false;
+  if (cameraStream) {
+    cameraStream.getTracks().forEach((track) => track.stop());
+    cameraStream = null;
+  }
+  cameraView.srcObject = null;
+  cameraPanel.hidden = true;
+}
+
 function setFile(file) {
   if (!file) return;
+  stopCamera();
   selectedFile = file;
   if (preview.src) URL.revokeObjectURL(preview.src);
   preview.src = URL.createObjectURL(file);
@@ -83,6 +99,54 @@ function setFile(file) {
 }
 
 chooseBtn.addEventListener("click", () => fileInput.click());
+
+async function openCamera() {
+  clearError();
+  stopCamera();
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showError("Camera is not available on this device.");
+    return;
+  }
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" },
+      audio: false,
+    });
+  } catch (err) {
+    showError(`Could not open the camera: ${err.message}`);
+    return;
+  }
+  cameraActive = true;
+  selectedFile = null;
+  cameraView.srcObject = cameraStream;
+  previewPanel.hidden = true;
+  resultPanel.hidden = true;
+  cameraPanel.hidden = false;
+  analyzeBtn.disabled = false;
+}
+
+cameraBtn.addEventListener("click", openCamera);
+
+function captureFrame() {
+  return new Promise((resolve, reject) => {
+    if (!cameraView.videoWidth || !cameraView.videoHeight) {
+      reject(new Error("The camera is still starting. Try again."));
+      return;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = cameraView.videoWidth;
+    canvas.height = cameraView.videoHeight;
+    canvas.getContext("2d").drawImage(cameraView, 0, 0);
+    canvas.toBlob(
+      (blob) => {
+        if (blob) resolve(new File([blob], "camera.jpg", { type: "image/jpeg" }));
+        else reject(new Error("Could not capture the camera frame."));
+      },
+      "image/jpeg",
+      0.9
+    );
+  });
+}
 
 fileInput.addEventListener("change", () => {
   if (fileInput.files && fileInput.files[0]) setFile(fileInput.files[0]);
@@ -118,6 +182,15 @@ document.querySelectorAll(".example-btn").forEach((button) => {
 });
 
 async function analyze() {
+  if (cameraActive) {
+    try {
+      const frame = await captureFrame();
+      setFile(frame);
+    } catch (err) {
+      showError(err.message);
+      return;
+    }
+  }
   if (!selectedFile) {
     showError("Choose a photo first.");
     return;
