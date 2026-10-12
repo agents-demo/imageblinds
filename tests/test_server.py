@@ -69,3 +69,40 @@ def test_index_includes_text_to_speech_controls(monkeypatch):
     script = client.get("/assets/app.js")
     assert script.status_code == 200
     assert "speechSynthesis" in script.text
+
+
+def test_index_links_manifest_and_registers_worker(monkeypatch):
+    client = _client(monkeypatch)
+    page = client.get("/")
+    assert page.status_code == 200
+    assert 'rel="manifest"' in page.text
+    assert 'name="theme-color"' in page.text
+
+    script = client.get("/assets/app.js")
+    assert "serviceWorker" in script.text
+    assert "/sw.js" in script.text
+
+
+def test_manifest_served(monkeypatch):
+    client = _client(monkeypatch)
+    response = client.get("/manifest.json")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/manifest+json")
+    assert "standalone" in response.text
+    assert "icon-512.png" in response.text
+
+
+def test_service_worker_served(monkeypatch):
+    client = _client(monkeypatch)
+    response = client.get("/sw.js")
+    assert response.status_code == 200
+    assert "javascript" in response.headers["content-type"]
+    assert "CACHE" in response.text
+
+
+def test_icons_served(monkeypatch):
+    client = _client(monkeypatch)
+    for name in ("icon-192.png", "icon-512.png", "maskable-192.png"):
+        response = client.get(f"/icons/{name}")
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "image/png"

@@ -21,11 +21,30 @@ app = FastAPI(title="ImageBlinds")
 
 app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 app.mount("/examples", StaticFiles(directory=STATIC_DIR / "examples"), name="examples")
+app.mount("/icons", StaticFiles(directory=STATIC_DIR / "icons"), name="icons")
 
 
 @app.get("/")
 async def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/manifest.json")
+async def manifest() -> FileResponse:
+    return FileResponse(STATIC_DIR / "manifest.json", media_type="application/manifest+json")
+
+
+@app.get("/sw.js")
+async def service_worker() -> FileResponse:
+    return FileResponse(STATIC_DIR / "sw.js", media_type="application/javascript")
+
+
+@app.get("/ca.crt")
+async def ca_cert() -> FileResponse:
+    path = ROOT / "certs" / "ca.crt"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Local CA not generated yet (see README).")
+    return FileResponse(path, media_type="application/x-x509-ca-cert")
 
 
 @app.post("/api/analyze")
