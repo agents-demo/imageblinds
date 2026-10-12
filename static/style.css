@@ -1,0 +1,140 @@
+:root {
+  color-scheme: dark;
+  --bg: #101418;
+  --panel: #1a2028;
+  --border: #2c3440;
+  --text: #e6ebf2;
+  --muted: #8b96a5;
+  --accent: #4f9cf9;
+  --error-bg: #2a1618;
+  --error-text: #ff9b9b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+header h1 {
+  margin: 0 0 0.25rem;
+}
+
+header p {
+  margin: 0 0 1.5rem;
+  color: var(--muted);
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+#dropzone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+#dropzone.dragging {
+  border-color: var(--accent);
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.examples {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+button {
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 0.6rem 1.1rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.example-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+}
+
+.example-btn:hover {
+  border-color: var(--accent);
+}
+
+#preview {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  margin: 0 auto;
+  border-radius: 6px;
+}
+
+#file-name {
+  text-align: center;
+  margin-bottom: 0;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.spinner {
+  color: var(--muted);
+}
+
+#result-panel h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  color: var(--muted);
+}
+
+#result-panel p {
+  margin: 0;
+  font-size: 1.15rem;
+  line-height: 1.5;
+}
+
+.error {
+  background: var(--error-bg);
+  border-color: var(--error-text);
+}
+
+.error p {
+  margin: 0;
+  color: var(--error-text);
+}

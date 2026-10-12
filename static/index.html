@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ImageBlinds — describe a photo</title>
+  <link rel="stylesheet" href="/assets/style.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <h1>ImageBlinds</h1>
+      <p>Pick a JPG photo and let the vision agent describe it.</p>
+    </header>
+
+    <section id="dropzone" class="panel">
+      <input type="file" id="file-input" accept=".jpg,image/jpeg" hidden />
+      <button id="choose-btn" type="button">Choose a photo…</button>
+      <span class="hint">or drop a .jpg here</span>
+
+      <div class="examples">
+        <span class="hint">Examples:</span>
+        <button type="button" class="example-btn" data-example="chair.jpg">chair.jpg</button>
+        <button type="button" class="example-btn" data-example="fridge.jpg">fridge.jpg</button>
+      </div>
+    </section>
+
+    <section id="preview-panel" class="panel" hidden>
+      <img id="preview" alt="Selected photo preview" />
+      <p id="file-name" class="hint"></p>
+    </section>
+
+    <section class="panel actions">
+      <button id="analyze-btn" type="button" disabled>Analyze</button>
+      <span id="spinner" class="spinner" hidden>Analyzing…</span>
+    </section>
+
+    <section id="result-panel" class="panel" hidden>
+      <h2>The agent says:</h2>
+      <p id="result"></p>
+    </section>
+
+    <section id="error-panel" class="panel error" hidden>
+      <p id="error"></p>
+    </section>
+  </main>
+
+  <script src="/assets/app.js"></script>
+</body>
+</html>
