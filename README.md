@@ -21,13 +21,11 @@ Requires Python 3.11–3.13.
 uv run uvicorn imageblinds.server:app --reload
 ```
 
-Open http://localhost:8000 — the camera opens automatically (it needs HTTPS or localhost; on
-desktop browsers the upload menu appears if the camera is unavailable). The camera screen
-shows a round shutter button: press it to freeze the live frame and send it to the vision
-agent (the result is shown over the frozen photo and spoken aloud); press it again to return
-to the live camera. The photo icon on the right opens the upload menu, where tapping the
-round photo icon (or dropping a `.jpg` on the screen) picks a photo that is analyzed
-immediately.
+Open http://localhost:8000 — the camera opens automatically (it needs HTTPS or localhost). The
+screen has exactly two buttons: the round shutter at the bottom-center freezes the live
+frame, sends it to the vision agent and shows (and speaks) the result over the frozen photo;
+pressing it again returns to the live camera. The photo icon on the right opens the file
+picker; the picked (or dropped) JPG is analyzed the same way.
 
 > The service worker caches assets (cache-first). After an app update, reload the page
 > twice: the first reload installs the new service worker, the second picks up the new assets.

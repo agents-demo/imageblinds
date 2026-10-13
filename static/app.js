@@ -3,7 +3,6 @@ const cameraView = document.getElementById("camera-view");
 const photoImg = document.getElementById("photo-img");
 const photoBtn = document.getElementById("photo-btn");
 const shutterBtn = document.getElementById("shutter-btn");
-const uploadPanel = document.getElementById("upload-panel");
 const resultOverlay = document.getElementById("result-overlay");
 const resultBox = document.getElementById("result");
 const errorPanel = document.getElementById("error-panel");
@@ -12,7 +11,6 @@ const speakBtn = document.getElementById("speak-btn");
 const stopBtn = document.getElementById("stop-btn");
 const certBanner = document.getElementById("cert-banner");
 const fileInput = document.getElementById("file-input");
-const chooseBtn = document.getElementById("choose-btn");
 
 if (location.protocol === "http:" && !["localhost", "127.0.0.1"].includes(location.hostname)) {
   certBanner.hidden = false;
@@ -103,7 +101,6 @@ function stopCamera() {
     cameraStream = null;
   }
   cameraView.srcObject = null;
-  cameraView.hidden = true;
 }
 
 function clearPhoto() {
@@ -116,44 +113,39 @@ function clearPhoto() {
 async function openCamera() {
   clearError();
   resultOverlay.hidden = true;
-  uploadPanel.hidden = true;
   clearPhoto();
   cameraView.hidden = false;
   setState("analyzing");
 
   if (!secureContext) {
-    openUpload();
-    showError("The camera only works over HTTPS (or localhost). Open the https:// address of this app.");
+    showError("The camera needs HTTPS (or localhost). Open the https:// address of this app.");
+    setState("live");
     return;
   }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    openUpload();
     showError("Camera is not available on this device.");
+    setState("live");
     return;
   }
   try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" },
-      audio: false,
-    });
+    try {
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+        audio: false,
+      });
+    } catch (err) {
+      if (err.name !== "OverconstrainedError") throw err;
+      cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
   } catch (err) {
-    openUpload();
     showError(`Could not open the camera: ${err.message}`);
+    setState("live");
     return;
   }
   cameraActive = true;
   cameraView.srcObject = cameraStream;
   await cameraView.play().catch(() => {});
   setState("live");
-}
-
-function openUpload() {
-  clearError();
-  stopCamera();
-  resultOverlay.hidden = true;
-  clearPhoto();
-  uploadPanel.hidden = false;
-  setState("menu");
 }
 
 function setFile(file) {
@@ -163,7 +155,6 @@ function setFile(file) {
   if (photoImg.src) URL.revokeObjectURL(photoImg.src);
   photoImg.src = URL.createObjectURL(file);
   photoImg.hidden = false;
-  uploadPanel.hidden = true;
   resultOverlay.hidden = true;
   currentFile = file;
   setState("frozen");
@@ -194,22 +185,15 @@ function captureFrame() {
 async function freezeAndAnalyze() {
   clearError();
   setState("analyzing");
-  let file = null;
-  if (cameraActive) {
-    try {
-      file = await captureFrame();
-    } catch (err) {
-      showError(err.message);
-      setState("live");
-      return;
-    }
+  try {
+    const file = await captureFrame();
     if (photoImg.src) URL.revokeObjectURL(photoImg.src);
     photoImg.src = URL.createObjectURL(file);
     photoImg.hidden = false;
     stopCamera();
     currentFile = file;
-  }
-  if (!currentFile) {
+  } catch (err) {
+    showError(err.message);
     setState("live");
     return;
   }
@@ -250,32 +234,25 @@ async function analyze() {
 }
 
 shutterBtn.addEventListener("click", () => {
-  if (state === "live") freezeAndAnalyze();
-  else if (state === "frozen") resumeLive();
+  if (state === "analyzing") return;
+  if (state === "frozen") resumeLive();
+  else if (cameraActive) freezeAndAnalyze();
+  else openCamera();
 });
 
-photoBtn.addEventListener("click", openUpload);
-chooseBtn.addEventListener("click", () => fileInput.click());
-uploadPanel.querySelector(".overlay-backdrop").addEventListener("click", resumeLive);
+photoBtn.addEventListener("click", () => fileInput.click());
 
 fileInput.addEventListener("change", () => {
   if (fileInput.files && fileInput.files[0]) setFile(fileInput.files[0]);
 });
 
 document.addEventListener("dragover", (event) => {
-  if (uploadPanel.hidden) return;
+  if (state === "analyzing") return;
   event.preventDefault();
-  uploadPanel.classList.add("dragging");
-});
-
-document.addEventListener("dragleave", (event) => {
-  if (!uploadPanel.contains(event.relatedTarget)) uploadPanel.classList.remove("dragging");
 });
 
 document.addEventListener("drop", (event) => {
-  if (uploadPanel.hidden) return;
   event.preventDefault();
-  uploadPanel.classList.remove("dragging");
   const file = event.dataTransfer.files && event.dataTransfer.files[0];
   if (file) setFile(file);
 });

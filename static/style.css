@@ -143,20 +143,6 @@ header h1 {
   text-align: center;
 }
 
-.overlay-content.dragging {
-  border-color: var(--accent);
-}
-
-#upload-panel {
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-}
-
-#upload-panel.dragging #choose-btn {
-  border-color: var(--text);
-}
-
 .overlay-content p {
   margin: 0;
   font-size: 1.1rem;
@@ -190,7 +176,8 @@ button:disabled {
 #photo-btn {
   position: absolute;
   right: max(1.1rem, env(safe-area-inset-right));
-  bottom: max(2.2rem, env(safe-area-inset-bottom));
+  top: 50%;
+  transform: translateY(-50%);
   z-index: 15;
   width: 60px;
   height: 60px;
@@ -213,31 +200,6 @@ button:disabled {
 
 #photo-btn:active {
   background: rgba(255, 255, 255, 0.25);
-}
-
-#choose-btn {
-  position: relative;
-  z-index: 1;
-  width: 96px;
-  height: 96px;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  background: rgba(79, 156, 249, 0.15);
-  border: 2px solid var(--accent);
-}
-
-#choose-btn svg {
-  width: 44px;
-  height: 44px;
-  color: var(--accent);
-}
-
-#choose-btn:active {
-  background: rgba(79, 156, 249, 0.35);
 }
 
 #shutter-btn {
