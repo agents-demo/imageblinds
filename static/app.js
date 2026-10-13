@@ -21,6 +21,10 @@ if (location.protocol === "http:" && !["localhost", "127.0.0.1"].includes(locati
   certBanner.hidden = false;
 }
 
+const configuredBase = (window.IMAGEBLINDS_API_BASE || "").trim();
+const API_URL =
+  configuredBase && configuredBase !== "__API_BASE__" ? configuredBase + "/api/analyze" : "/api/analyze";
+
 let selectedFile = null;
 let lastDescription = "";
 let cameraStream = null;
@@ -168,7 +172,7 @@ dropzone.addEventListener("drop", (event) => {
 
 async function loadExample(name) {
   clearError();
-  const response = await fetch(`/examples/${name}`);
+  const response = await fetch(`./examples/${name}`);
   if (!response.ok) {
     showError(`Could not load example ${name}.`);
     return;
@@ -204,7 +208,7 @@ async function analyze() {
   form.append("file", selectedFile);
 
   try {
-    const response = await fetch("/api/analyze", { method: "POST", body: form });
+    const response = await fetch(API_URL, { method: "POST", body: form });
     const data = await response.json();
     if (!response.ok) {
       showError(data.error || data.detail || `Server error (${response.status}).`);
@@ -226,6 +230,6 @@ analyzeBtn.addEventListener("click", analyze);
 
 if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => {});
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
   });
 }

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -138,6 +139,19 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="ImageBlinds", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://agents-demo.github.io",
+        "http://localhost:8000",
+        "http://localhost:8080",
+        "http://127.0.0.1:8000",
+        "http://127.0.0.1:8080",
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 app.mount("/examples", StaticFiles(directory=STATIC_DIR / "examples"), name="examples")

@@ -1,11 +1,12 @@
-const CACHE = "imageblinds-v2";
+const CACHE = "imageblinds-v3";
 const PRECACHE = [
-  "/",
-  "/assets/app.js",
-  "/assets/style.css",
-  "/manifest.json",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png"
+  "./",
+  "./assets/config.js",
+  "./assets/app.js",
+  "./assets/style.css",
+  "./manifest.json",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png"
 ];
 
 self.addEventListener("install", (event) => {
@@ -28,7 +29,7 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
-  if (event.request.method !== "GET" || url.pathname.startsWith("/api/")) {
+  if (event.request.method !== "GET" || url.pathname.includes("/api/")) {
     return;
   }
   event.respondWith(

@@ -108,6 +108,33 @@ Find the machine's LAN IP (`hostname -I`) and browse `http://<IP>:8000` from the
 This is enough for the web page and voice output, but **installing the app as a PWA on the
 phone requires HTTPS** — see the section above.
 
+## Deploy (GitHub Pages + Render)
+
+The published site is split across two hosts:
+
+- **GitHub Pages** serves the static frontend at
+  `https://agents-demo.github.io/imageblinds/` (deployed by the workflow in
+  `.github/workflows/pages.yml` from `static/`).
+- **Render** runs the FastAPI backend (`Dockerfile`) at
+  `https://imageblinds.onrender.com`; the browser posts images to its
+  `/api/analyze`.
+
+One-time setup:
+
+1. **Render**: create a Web Service from this repo — Language: **Docker**,
+   Root directory empty, Start command empty, Compute **Free**. In
+   Environment variables set `API_KEY` (the only required one; the rest —
+   `API_BASE`, `VISION_MODEL_NAME`, temperatures, timeouts — have built-in
+   defaults in `imageblinds/settings.py`).
+2. **GitHub**: add the Actions **variable** `BACKEND_URL =
+   https://imageblinds.onrender.com` (Settings → Secrets and variables →
+   Actions). The deploy workflow bakes it into `static/config.js`.
+3. **GitHub**: Settings → Pages → Source = **GitHub Actions**.
+
+Push to `main`; the workflow builds `static/` and deploys it. Note the Render
+free tier sleeps when idle, so the first analysis after a pause takes ~30–60 s
+to cold-start.
+
 ## Tests (offline, no model calls)
 
 ```bash

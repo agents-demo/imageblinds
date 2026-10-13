@@ -26,7 +26,7 @@ def model_provider() -> str:
 
 
 def api_base() -> str:
-    return os.getenv("API_BASE", "")
+    return os.getenv("API_BASE", "https://api.deepseek.com")
 
 
 def api_key() -> str:
@@ -56,13 +56,12 @@ def verify_ssl() -> bool:
 def validate() -> None:
     """Ensure the required backend environment variables are present.
 
-    Only the vision model is used by this app (``MODEL_NAME`` is taketwo's
-    text-agent model and is not needed here).
+    Only the API key is required; everything else has built-in defaults
+    (the hosted deployment sets no other environment variables). ``MODEL_NAME``
+    is taketwo's text-agent model and is not used by this app.
     """
-    missing = [k for k in ("API_KEY", "API_BASE", "VISION_MODEL_NAME") if not os.getenv(k)]
-    if missing:
+    if not os.getenv("API_KEY"):
         raise ConfigError(
-            "Missing required environment variables: "
-            + ", ".join(missing)
-            + ".\nCopy .env.example to .env and fill it in."
+            "Missing required environment variable: API_KEY.\n"
+            "Copy .env.example to .env and fill it in."
         )

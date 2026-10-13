@@ -1,0 +1,1 @@
+window.IMAGEBLINDS_API_BASE = "__API_BASE__";
