@@ -7,8 +7,6 @@ const resultOverlay = document.getElementById("result-overlay");
 const resultBox = document.getElementById("result");
 const errorPanel = document.getElementById("error-panel");
 const errorBox = document.getElementById("error");
-const speakBtn = document.getElementById("speak-btn");
-const stopBtn = document.getElementById("stop-btn");
 const certBanner = document.getElementById("cert-banner");
 const fileInput = document.getElementById("file-input");
 
@@ -70,13 +68,7 @@ function stopSpeaking() {
 if (synth) {
   synth.onvoiceschanged = pickVoice;
   pickVoice();
-} else {
-  speakBtn.hidden = true;
-  stopBtn.hidden = true;
 }
-
-speakBtn.addEventListener("click", () => speak(lastDescription));
-stopBtn.addEventListener("click", stopSpeaking);
 
 function showError(message) {
   errorBox.textContent = message;
