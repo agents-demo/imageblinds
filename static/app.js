@@ -24,17 +24,11 @@ const configuredBase = (window.IMAGEBLINDS_API_BASE || "").trim();
 const API_URL =
   configuredBase && configuredBase !== "__API_BASE__" ? configuredBase + "/api/analyze" : "/api/analyze";
 
-const isTouch =
-  (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) ||
-  "ontouchstart" in window ||
-  navigator.maxTouchPoints > 0;
-
 let state = "live";
 let currentFile = null;
 let lastDescription = "";
 let cameraStream = null;
 let cameraActive = false;
-let hadCamera = false;
 let errorTimer = null;
 
 const synth = window.speechSynthesis || null;
@@ -142,7 +136,6 @@ async function openCamera() {
     return;
   }
   cameraActive = true;
-  hadCamera = true;
   cameraView.srcObject = cameraStream;
   setState("live");
 }
@@ -220,8 +213,7 @@ async function freezeAndAnalyze() {
 function resumeLive() {
   resultOverlay.hidden = true;
   stopSpeaking();
-  if (isTouch || hadCamera) openCamera();
-  else openUpload();
+  openCamera();
 }
 
 async function analyze() {
@@ -296,8 +288,7 @@ document.querySelectorAll(".example-btn").forEach((button) => {
   button.addEventListener("click", () => loadExample(button.dataset.example));
 });
 
-if (isTouch) openCamera();
-else openUpload();
+openCamera();
 
 if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
   window.addEventListener("load", () => {
