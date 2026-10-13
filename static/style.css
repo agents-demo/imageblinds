@@ -147,21 +147,20 @@ header h1 {
   border-color: var(--accent);
 }
 
-.overlay-content h2 {
-  margin: 0;
-  font-size: 1rem;
-  color: var(--muted);
+#upload-panel {
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+#upload-panel.dragging #choose-btn {
+  border-color: var(--text);
 }
 
 .overlay-content p {
   margin: 0;
   font-size: 1.1rem;
   line-height: 1.5;
-}
-
-.hint {
-  color: var(--muted);
-  font-size: 0.85rem;
 }
 
 .actions {
@@ -186,37 +185,6 @@ button {
 button:disabled {
   opacity: 0.45;
   cursor: default;
-}
-
-button.ghost {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--muted);
-}
-
-button.ghost:hover {
-  border-color: var(--accent);
-  color: var(--text);
-}
-
-.examples {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.example-btn {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 0.35rem 0.7rem;
-  font-size: 0.85rem;
-}
-
-.example-btn:hover {
-  border-color: var(--accent);
 }
 
 #photo-btn {
@@ -248,7 +216,8 @@ button.ghost:hover {
 }
 
 #choose-btn {
-  align-self: center;
+  position: relative;
+  z-index: 1;
   width: 96px;
   height: 96px;
   aspect-ratio: 1;

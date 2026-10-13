@@ -4,7 +4,6 @@ const photoImg = document.getElementById("photo-img");
 const photoBtn = document.getElementById("photo-btn");
 const shutterBtn = document.getElementById("shutter-btn");
 const uploadPanel = document.getElementById("upload-panel");
-const uploadContent = uploadPanel.querySelector(".overlay-content");
 const resultOverlay = document.getElementById("result-overlay");
 const resultBox = document.getElementById("result");
 const errorPanel = document.getElementById("error-panel");
@@ -14,7 +13,6 @@ const stopBtn = document.getElementById("stop-btn");
 const certBanner = document.getElementById("cert-banner");
 const fileInput = document.getElementById("file-input");
 const chooseBtn = document.getElementById("choose-btn");
-const backBtn = document.getElementById("back-btn");
 
 if (location.protocol === "http:" && !["localhost", "127.0.0.1"].includes(location.hostname)) {
   certBanner.hidden = false;
@@ -257,8 +255,8 @@ shutterBtn.addEventListener("click", () => {
 });
 
 photoBtn.addEventListener("click", openUpload);
-backBtn.addEventListener("click", resumeLive);
 chooseBtn.addEventListener("click", () => fileInput.click());
+uploadPanel.querySelector(".overlay-backdrop").addEventListener("click", resumeLive);
 
 fileInput.addEventListener("change", () => {
   if (fileInput.files && fileInput.files[0]) setFile(fileInput.files[0]);
@@ -267,34 +265,19 @@ fileInput.addEventListener("change", () => {
 document.addEventListener("dragover", (event) => {
   if (uploadPanel.hidden) return;
   event.preventDefault();
-  uploadContent.classList.add("dragging");
+  uploadPanel.classList.add("dragging");
 });
 
 document.addEventListener("dragleave", (event) => {
-  if (!uploadPanel.contains(event.relatedTarget)) uploadContent.classList.remove("dragging");
+  if (!uploadPanel.contains(event.relatedTarget)) uploadPanel.classList.remove("dragging");
 });
 
 document.addEventListener("drop", (event) => {
   if (uploadPanel.hidden) return;
   event.preventDefault();
-  uploadContent.classList.remove("dragging");
+  uploadPanel.classList.remove("dragging");
   const file = event.dataTransfer.files && event.dataTransfer.files[0];
   if (file) setFile(file);
-});
-
-async function loadExample(name) {
-  clearError();
-  const response = await fetch(`./examples/${name}`);
-  if (!response.ok) {
-    showError(`Could not load example ${name}.`);
-    return;
-  }
-  const blob = await response.blob();
-  setFile(new File([blob], name, { type: blob.type || "image/jpeg" }));
-}
-
-document.querySelectorAll(".example-btn").forEach((button) => {
-  button.addEventListener("click", () => loadExample(button.dataset.example));
 });
 
 openCamera();
