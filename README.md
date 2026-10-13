@@ -21,11 +21,12 @@ Requires Python 3.11–3.13.
 uv run uvicorn imageblinds.server:app --reload
 ```
 
-Open http://localhost:8000 — press **photo** to pick `chair.jpg` / `fridge.jpg` (or any JPG),
-or **camera** to use the device camera (the app asks for permission; on phones the rear
-camera is used). Then press **Analyze**: with the camera open, the live frame is captured and
-sent as `camera.jpg`; otherwise the selected photo is sent. The result is shown and spoken
-aloud (Web Speech API; "Read aloud" repeats it).
+Open http://localhost:8000 — on phones the rear camera opens automatically; on desktop the
+app lands on the **upload photo** menu instead. The camera screen shows a round shutter
+button: press it to freeze the live frame and send it to the vision agent (the result is
+shown over the frozen photo and spoken aloud); press it again to return to the live camera.
+The photo icon on the right opens the upload menu, where a `.jpg` can be picked (or dropped)
+and is analyzed immediately — `chair.jpg` / `fridge.jpg` are available as examples.
 
 > The service worker caches assets (cache-first). After an app update, reload the page
 > twice: the first reload installs the new service worker, the second picks up the new assets.

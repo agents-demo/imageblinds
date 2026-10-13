@@ -1,21 +1,20 @@
-const fileInput = document.getElementById("file-input");
-const chooseBtn = document.getElementById("choose-btn");
-const cameraBtn = document.getElementById("camera-btn");
-const cameraPanel = document.getElementById("camera-panel");
+const stage = document.getElementById("stage");
 const cameraView = document.getElementById("camera-view");
-const dropzone = document.getElementById("dropzone");
-const previewPanel = document.getElementById("preview-panel");
-const preview = document.getElementById("preview");
-const fileName = document.getElementById("file-name");
-const analyzeBtn = document.getElementById("analyze-btn");
-const spinner = document.getElementById("spinner");
-const resultPanel = document.getElementById("result-panel");
+const photoImg = document.getElementById("photo-img");
+const photoBtn = document.getElementById("photo-btn");
+const shutterBtn = document.getElementById("shutter-btn");
+const uploadPanel = document.getElementById("upload-panel");
+const uploadContent = uploadPanel.querySelector(".overlay-content");
+const resultOverlay = document.getElementById("result-overlay");
 const resultBox = document.getElementById("result");
 const errorPanel = document.getElementById("error-panel");
 const errorBox = document.getElementById("error");
 const speakBtn = document.getElementById("speak-btn");
 const stopBtn = document.getElementById("stop-btn");
 const certBanner = document.getElementById("cert-banner");
+const fileInput = document.getElementById("file-input");
+const chooseBtn = document.getElementById("choose-btn");
+const backBtn = document.getElementById("back-btn");
 
 if (location.protocol === "http:" && !["localhost", "127.0.0.1"].includes(location.hostname)) {
   certBanner.hidden = false;
@@ -25,13 +24,31 @@ const configuredBase = (window.IMAGEBLINDS_API_BASE || "").trim();
 const API_URL =
   configuredBase && configuredBase !== "__API_BASE__" ? configuredBase + "/api/analyze" : "/api/analyze";
 
-let selectedFile = null;
+const isTouch =
+  (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) ||
+  "ontouchstart" in window ||
+  navigator.maxTouchPoints > 0;
+
+let state = "live";
+let currentFile = null;
 let lastDescription = "";
 let cameraStream = null;
 let cameraActive = false;
+let hadCamera = false;
+let errorTimer = null;
 
 const synth = window.speechSynthesis || null;
 let voice = null;
+
+function setState(mode) {
+  state = mode;
+  stage.classList.toggle("frozen", mode === "frozen");
+  stage.classList.toggle("analyzing", mode === "analyzing");
+  shutterBtn.setAttribute(
+    "aria-label",
+    mode === "frozen" ? "Return to the live camera" : "Capture and analyze"
+  );
+}
 
 function pickVoice() {
   if (!synth) return;
@@ -72,9 +89,14 @@ function showError(message) {
   errorBox.textContent = message;
   errorPanel.hidden = false;
   speak(message);
+  clearTimeout(errorTimer);
+  errorTimer = setTimeout(() => {
+    errorPanel.hidden = true;
+  }, 7000);
 }
 
 function clearError() {
+  clearTimeout(errorTimer);
   errorPanel.hidden = true;
   stopSpeaking();
 }
@@ -86,29 +108,27 @@ function stopCamera() {
     cameraStream = null;
   }
   cameraView.srcObject = null;
-  cameraPanel.hidden = true;
+  cameraView.hidden = true;
 }
 
-function setFile(file) {
-  if (!file) return;
-  stopCamera();
-  selectedFile = file;
-  if (preview.src) URL.revokeObjectURL(preview.src);
-  preview.src = URL.createObjectURL(file);
-  fileName.textContent = file.name;
-  previewPanel.hidden = false;
-  resultPanel.hidden = true;
-  analyzeBtn.disabled = false;
-  clearError();
+function clearPhoto() {
+  if (photoImg.src) URL.revokeObjectURL(photoImg.src);
+  photoImg.removeAttribute("src");
+  photoImg.hidden = true;
+  currentFile = null;
 }
-
-chooseBtn.addEventListener("click", () => fileInput.click());
 
 async function openCamera() {
   clearError();
-  stopCamera();
+  resultOverlay.hidden = true;
+  uploadPanel.hidden = true;
+  clearPhoto();
+  cameraView.hidden = false;
+  setState("analyzing");
+
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     showError("Camera is not available on this device.");
+    openUpload();
     return;
   }
   try {
@@ -118,18 +138,37 @@ async function openCamera() {
     });
   } catch (err) {
     showError(`Could not open the camera: ${err.message}`);
+    openUpload();
     return;
   }
   cameraActive = true;
-  selectedFile = null;
+  hadCamera = true;
   cameraView.srcObject = cameraStream;
-  previewPanel.hidden = true;
-  resultPanel.hidden = true;
-  cameraPanel.hidden = false;
-  analyzeBtn.disabled = false;
+  setState("live");
 }
 
-cameraBtn.addEventListener("click", openCamera);
+function openUpload() {
+  clearError();
+  stopCamera();
+  resultOverlay.hidden = true;
+  clearPhoto();
+  uploadPanel.hidden = false;
+  setState("menu");
+}
+
+function setFile(file) {
+  if (!file) return;
+  clearError();
+  stopCamera();
+  if (photoImg.src) URL.revokeObjectURL(photoImg.src);
+  photoImg.src = URL.createObjectURL(file);
+  photoImg.hidden = false;
+  uploadPanel.hidden = true;
+  resultOverlay.hidden = true;
+  currentFile = file;
+  setState("frozen");
+  analyze();
+}
 
 function captureFrame() {
   return new Promise((resolve, reject) => {
@@ -152,20 +191,92 @@ function captureFrame() {
   });
 }
 
+async function freezeAndAnalyze() {
+  clearError();
+  setState("analyzing");
+  let file = null;
+  if (cameraActive) {
+    try {
+      file = await captureFrame();
+    } catch (err) {
+      showError(err.message);
+      setState("live");
+      return;
+    }
+    if (photoImg.src) URL.revokeObjectURL(photoImg.src);
+    photoImg.src = URL.createObjectURL(file);
+    photoImg.hidden = false;
+    stopCamera();
+    currentFile = file;
+  }
+  if (!currentFile) {
+    setState("live");
+    return;
+  }
+  setState("frozen");
+  await analyze();
+}
+
+function resumeLive() {
+  resultOverlay.hidden = true;
+  stopSpeaking();
+  if (isTouch || hadCamera) openCamera();
+  else openUpload();
+}
+
+async function analyze() {
+  if (!currentFile) return;
+  clearError();
+  resultOverlay.hidden = true;
+  setState("analyzing");
+
+  const form = new FormData();
+  form.append("file", currentFile);
+
+  try {
+    const response = await fetch(API_URL, { method: "POST", body: form });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || data.detail || `Server error (${response.status}).`);
+    }
+    lastDescription = data.description;
+    resultBox.textContent = lastDescription;
+    resultOverlay.hidden = false;
+    setState("frozen");
+    speak(lastDescription);
+  } catch (err) {
+    showError(err.message);
+    resumeLive();
+  }
+}
+
+shutterBtn.addEventListener("click", () => {
+  if (state === "live") freezeAndAnalyze();
+  else if (state === "frozen") resumeLive();
+});
+
+photoBtn.addEventListener("click", openUpload);
+backBtn.addEventListener("click", resumeLive);
+chooseBtn.addEventListener("click", () => fileInput.click());
+
 fileInput.addEventListener("change", () => {
   if (fileInput.files && fileInput.files[0]) setFile(fileInput.files[0]);
 });
 
-dropzone.addEventListener("dragover", (event) => {
+document.addEventListener("dragover", (event) => {
+  if (uploadPanel.hidden) return;
   event.preventDefault();
-  dropzone.classList.add("dragging");
+  uploadContent.classList.add("dragging");
 });
 
-dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragging"));
+document.addEventListener("dragleave", (event) => {
+  if (!uploadPanel.contains(event.relatedTarget)) uploadContent.classList.remove("dragging");
+});
 
-dropzone.addEventListener("drop", (event) => {
+document.addEventListener("drop", (event) => {
+  if (uploadPanel.hidden) return;
   event.preventDefault();
-  dropzone.classList.remove("dragging");
+  uploadContent.classList.remove("dragging");
   const file = event.dataTransfer.files && event.dataTransfer.files[0];
   if (file) setFile(file);
 });
@@ -185,48 +296,8 @@ document.querySelectorAll(".example-btn").forEach((button) => {
   button.addEventListener("click", () => loadExample(button.dataset.example));
 });
 
-async function analyze() {
-  if (cameraActive) {
-    try {
-      const frame = await captureFrame();
-      setFile(frame);
-    } catch (err) {
-      showError(err.message);
-      return;
-    }
-  }
-  if (!selectedFile) {
-    showError("Choose a photo first.");
-    return;
-  }
-  clearError();
-  resultPanel.hidden = true;
-  analyzeBtn.disabled = true;
-  spinner.hidden = false;
-
-  const form = new FormData();
-  form.append("file", selectedFile);
-
-  try {
-    const response = await fetch(API_URL, { method: "POST", body: form });
-    const data = await response.json();
-    if (!response.ok) {
-      showError(data.error || data.detail || `Server error (${response.status}).`);
-      return;
-    }
-    lastDescription = data.description;
-    resultBox.textContent = lastDescription;
-    resultPanel.hidden = false;
-    speak(lastDescription);
-  } catch (err) {
-    showError(`Could not reach the server: ${err.message}`);
-  } finally {
-    spinner.hidden = true;
-    analyzeBtn.disabled = false;
-  }
-}
-
-analyzeBtn.addEventListener("click", analyze);
+if (isTouch) openCamera();
+else openUpload();
 
 if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
   window.addEventListener("load", () => {

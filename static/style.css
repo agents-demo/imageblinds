@@ -8,10 +8,16 @@
   --accent: #4f9cf9;
   --error-bg: #2a1618;
   --error-text: #ff9b9b;
+  --shutter-live: #f44336;
 }
 
 * {
   box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
 }
 
 body {
@@ -19,52 +25,150 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow: hidden;
 }
 
-main {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 2rem 1.5rem 4rem;
+header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: max(0.75rem, env(safe-area-inset-top)) 1rem 0.75rem;
+  background: linear-gradient(rgba(16, 20, 24, 0.9), rgba(16, 20, 24, 0));
+  pointer-events: none;
 }
 
 header h1 {
-  margin: 0 0 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
 }
 
-header p {
-  margin: 0 0 1.5rem;
-  color: var(--muted);
+.glasses {
+  width: 1.5em;
+  height: 1.5em;
+  color: var(--accent);
 }
 
-.panel {
+#stage {
+  position: fixed;
+  inset: 0;
+  background: #000;
+}
+
+#camera-view,
+#photo-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+#photo-img {
+  background: var(--bg);
+}
+
+.banner {
+  position: absolute;
+  top: calc(3.5rem + env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  max-width: min(92vw, 560px);
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 1.25rem;
-  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
 }
 
-#dropzone {
+.banner p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.banner a {
+  color: var(--accent);
+}
+
+.banner.error {
+  background: var(--error-bg);
+  border-color: var(--error-text);
+}
+
+.banner.error p {
+  color: var(--error-text);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 1rem 1rem calc(7rem + env(safe-area-inset-bottom, 0px));
 }
 
-#dropzone.dragging {
+.overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 10, 13, 0.72);
+  backdrop-filter: blur(6px);
+}
+
+.overlay-content {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 480px);
+  max-height: 70%;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  text-align: center;
+}
+
+.overlay-content.dragging {
   border-color: var(--accent);
+}
+
+.overlay-content h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--muted);
+}
+
+.overlay-content p {
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: 1.5;
 }
 
 .hint {
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
-.examples {
-  margin-left: auto;
+.actions {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: center;
+  gap: 0.75rem;
 }
 
 button {
@@ -82,6 +186,25 @@ button:disabled {
   cursor: default;
 }
 
+button.ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+button.ghost:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.examples {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .example-btn {
   background: transparent;
   border: 1px solid var(--border);
@@ -94,65 +217,82 @@ button:disabled {
   border-color: var(--accent);
 }
 
-#preview {
-  display: block;
-  max-width: 100%;
-  max-height: 320px;
-  margin: 0 auto;
-  border-radius: 6px;
-}
-
-#camera-view {
-  display: block;
-  width: 100%;
-  max-height: 420px;
-  margin: 0 auto;
-  border-radius: 6px;
-  background: #000;
-}
-
-#camera-panel .hint {
-  text-align: center;
-  margin-bottom: 0;
-}
-
-#file-name {
-  text-align: center;
-  margin-bottom: 0;
-}
-
-.actions {
+#photo-btn {
+  position: absolute;
+  right: max(0.9rem, env(safe-area-inset-right));
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 15;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
-  gap: 1rem;
+  justify-content: center;
+  background: rgba(16, 20, 24, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(4px);
+  padding: 0;
 }
 
-.spinner {
-  color: var(--muted);
+#photo-btn svg {
+  width: 26px;
+  height: 26px;
+  color: #fff;
 }
 
-#result-panel h2 {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
-  color: var(--muted);
+#photo-btn:active {
+  background: rgba(255, 255, 255, 0.25);
 }
 
-#result-panel p {
-  margin: 0;
-  font-size: 1.15rem;
-  line-height: 1.5;
+#shutter-btn {
+  position: absolute;
+  left: 50%;
+  bottom: max(1.4rem, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 15;
+  width: 78px;
+  height: 78px;
+  border-radius: 50%;
+  background: transparent;
+  border: 4px solid #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.45);
 }
 
-#result-panel .actions {
-  margin-top: 0.75rem;
+.shutter-dot {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: var(--shutter-live);
+  transition: background 0.15s ease, transform 0.15s ease, border-radius 0.15s ease;
 }
 
-.error {
-  background: var(--error-bg);
-  border-color: var(--error-text);
+#shutter-btn:active .shutter-dot {
+  transform: scale(0.85);
 }
 
-.error p {
-  margin: 0;
-  color: var(--error-text);
+#stage.frozen .shutter-dot {
+  background: #e6ebf2;
+}
+
+#stage.frozen #shutter-btn {
+  z-index: 30;
+}
+
+#stage.analyzing .shutter-dot {
+  border-radius: 50%;
+  background: transparent;
+  border: 4px solid var(--accent);
+  border-top-color: transparent;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

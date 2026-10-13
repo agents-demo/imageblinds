@@ -10,13 +10,22 @@
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
 </head>
 <body>
-  <main>
-    <header>
-      <h1>ImageBlinds</h1>
-      <p>Pick a JPG photo and let the vision agent describe it.</p>
-    </header>
+  <header>
+    <h1>
+      <svg class="glasses" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="7" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.8" />
+        <circle cx="17" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.8" />
+        <path d="M2.8 12h5.5M15.7 12h5.5M11.5 12a1.4 1.4 0 0 1 1 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+      </svg>
+      ImageBlinds
+    </h1>
+  </header>
 
-    <section id="cert-banner" class="panel error" hidden>
+  <main id="stage">
+    <video id="camera-view" autoplay playsinline muted></video>
+    <img id="photo-img" alt="Frozen photo" hidden />
+
+    <section id="cert-banner" class="banner" hidden>
       <p>
         Phone app install needs a trusted certificate.
         <a href="/ca.crt">Download the certificate</a>, then install it via
@@ -25,46 +34,52 @@
       </p>
     </section>
 
-    <section id="dropzone" class="panel">
-      <input type="file" id="file-input" accept=".jpg,image/jpeg" hidden />
-      <button id="choose-btn" type="button">photo</button>
-      <button id="camera-btn" type="button">camera</button>
-      <span class="hint">or drop a .jpg here</span>
-
-      <div class="examples">
-        <span class="hint">Examples:</span>
-        <button type="button" class="example-btn" data-example="chair.jpg">chair.jpg</button>
-        <button type="button" class="example-btn" data-example="fridge.jpg">fridge.jpg</button>
-      </div>
-    </section>
-
-    <section id="camera-panel" class="panel" hidden>
-      <video id="camera-view" autoplay playsinline muted></video>
-      <p class="hint">Point the camera, then press Analyze to send the picture.</p>
-    </section>
-
-    <section id="preview-panel" class="panel" hidden>
-      <img id="preview" alt="Selected photo preview" />
-      <p id="file-name" class="hint"></p>
-    </section>
-
-    <section class="panel actions">
-      <button id="analyze-btn" type="button" disabled>Analyze</button>
-      <span id="spinner" class="spinner" hidden>Analyzing…</span>
-    </section>
-
-    <section id="result-panel" class="panel" hidden>
-      <h2>The agent says:</h2>
-      <p id="result" aria-live="polite"></p>
-      <div class="actions">
-        <button id="speak-btn" type="button">Read aloud</button>
-        <button id="stop-btn" type="button">Stop</button>
-      </div>
-    </section>
-
-    <section id="error-panel" class="panel error" hidden aria-live="assertive">
+    <section id="error-panel" class="banner error" hidden aria-live="assertive">
       <p id="error"></p>
     </section>
+
+    <section id="result-overlay" class="overlay" hidden>
+      <div class="overlay-backdrop"></div>
+      <div class="overlay-content">
+        <h2>The agent says:</h2>
+        <p id="result" aria-live="polite"></p>
+        <div class="actions">
+          <button id="speak-btn" type="button">Read aloud</button>
+          <button id="stop-btn" type="button">Stop</button>
+        </div>
+        <p class="hint">Press the shutter to return to the live camera.</p>
+      </div>
+    </section>
+
+    <section id="upload-panel" class="overlay" hidden>
+      <div class="overlay-backdrop"></div>
+      <div class="overlay-content">
+        <h2>Choose a photo</h2>
+        <input type="file" id="file-input" accept=".jpg,image/jpeg" hidden />
+        <button id="choose-btn" type="button">Pick a JPG photo</button>
+        <span class="hint">or drop it anywhere on the screen</span>
+
+        <div class="examples">
+          <span class="hint">Examples:</span>
+          <button type="button" class="example-btn" data-example="chair.jpg">chair.jpg</button>
+          <button type="button" class="example-btn" data-example="fridge.jpg">fridge.jpg</button>
+        </div>
+
+        <button id="back-btn" type="button" class="ghost">Back to camera</button>
+      </div>
+    </section>
+
+    <button id="photo-btn" type="button" aria-label="Upload a photo" title="Upload a photo">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <rect x="3" y="5" width="18" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8" />
+        <circle cx="9" cy="10" r="1.8" fill="currentColor" />
+        <path d="M4.5 17l4.8-4.6a1.5 1.5 0 0 1 2 0l2.4 2.2M14.5 14.5l2-2a1.5 1.5 0 0 1 2 0l1 1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+      </svg>
+    </button>
+
+    <button id="shutter-btn" type="button" aria-label="Capture and analyze">
+      <span class="shutter-dot"></span>
+    </button>
   </main>
 
   <script src="./assets/config.js"></script>
