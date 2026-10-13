@@ -61,11 +61,12 @@ def test_index_serves_gui(monkeypatch):
     assert "ImageBlinds" in response.text
 
 
-def test_index_includes_text_to_speech_controls(monkeypatch):
+def test_index_includes_camera_controls(monkeypatch):
     client = _client(monkeypatch)
     page = client.get("/")
     assert page.status_code == 200
-    assert "Read aloud" in page.text
+    assert 'id="shutter-btn"' in page.text
+    assert 'id="photo-btn"' in page.text
     assert 'aria-live="polite"' in page.text
 
     script = client.get("/assets/app.js")
