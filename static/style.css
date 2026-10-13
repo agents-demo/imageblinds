@@ -172,6 +172,8 @@ header h1 {
 }
 
 button {
+  -webkit-appearance: none;
+  appearance: none;
   background: var(--accent);
   color: #fff;
   border: 0;
@@ -219,30 +221,54 @@ button.ghost:hover {
 
 #photo-btn {
   position: absolute;
-  right: max(0.9rem, env(safe-area-inset-right));
-  top: 50%;
-  transform: translateY(-50%);
+  right: max(1.1rem, env(safe-area-inset-right));
+  bottom: max(2.2rem, env(safe-area-inset-bottom));
   z-index: 15;
-  width: 52px;
-  height: 52px;
+  width: 60px;
+  height: 60px;
+  aspect-ratio: 1;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(16, 20, 24, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(16, 20, 24, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   backdrop-filter: blur(4px);
   padding: 0;
 }
 
 #photo-btn svg {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   color: #fff;
 }
 
 #photo-btn:active {
   background: rgba(255, 255, 255, 0.25);
+}
+
+#choose-btn {
+  align-self: center;
+  width: 96px;
+  height: 96px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: rgba(79, 156, 249, 0.15);
+  border: 2px solid var(--accent);
+}
+
+#choose-btn svg {
+  width: 44px;
+  height: 44px;
+  color: var(--accent);
+}
+
+#choose-btn:active {
+  background: rgba(79, 156, 249, 0.35);
 }
 
 #shutter-btn {
@@ -251,8 +277,9 @@ button.ghost:hover {
   bottom: max(1.4rem, env(safe-area-inset-bottom));
   transform: translateX(-50%);
   z-index: 15;
-  width: 78px;
-  height: 78px;
+  width: 84px;
+  height: 84px;
+  aspect-ratio: 1;
   border-radius: 50%;
   background: transparent;
   border: 4px solid #fff;
@@ -264,8 +291,9 @@ button.ghost:hover {
 }
 
 .shutter-dot {
-  width: 60px;
-  height: 60px;
+  width: 66px;
+  height: 66px;
+  aspect-ratio: 1;
   border-radius: 50%;
   background: var(--shutter-live);
   transition: background 0.15s ease, transform 0.15s ease, border-radius 0.15s ease;

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>ImageBlinds — describe a photo</title>
   <link rel="stylesheet" href="./assets/style.css" />
   <link rel="manifest" href="./manifest.json" />
@@ -56,8 +56,14 @@
       <div class="overlay-content">
         <h2>Choose a photo</h2>
         <input type="file" id="file-input" accept=".jpg,image/jpeg" hidden />
-        <button id="choose-btn" type="button">Pick a JPG photo</button>
-        <span class="hint">or drop it anywhere on the screen</span>
+        <button id="choose-btn" type="button" aria-label="Pick a photo">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <rect x="3" y="5" width="18" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8" />
+            <circle cx="9" cy="10" r="1.8" fill="currentColor" />
+            <path d="M4.5 17l4.8-4.6a1.5 1.5 0 0 1 2 0l2.4 2.2M14.5 14.5l2-2a1.5 1.5 0 0 1 2 0l1 1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+          </svg>
+        </button>
+        <span class="hint">Tap the photo icon to pick a JPG, or drop it on the screen</span>
 
         <div class="examples">
           <span class="hint">Examples:</span>

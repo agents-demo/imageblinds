@@ -24,6 +24,9 @@ const configuredBase = (window.IMAGEBLINDS_API_BASE || "").trim();
 const API_URL =
   configuredBase && configuredBase !== "__API_BASE__" ? configuredBase + "/api/analyze" : "/api/analyze";
 
+const secureContext =
+  window.isSecureContext || ["localhost", "127.0.0.1", "::1"].includes(location.hostname);
+
 let state = "live";
 let currentFile = null;
 let lastDescription = "";
@@ -120,9 +123,14 @@ async function openCamera() {
   cameraView.hidden = false;
   setState("analyzing");
 
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    showError("Camera is not available on this device.");
+  if (!secureContext) {
     openUpload();
+    showError("The camera only works over HTTPS (or localhost). Open the https:// address of this app.");
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    openUpload();
+    showError("Camera is not available on this device.");
     return;
   }
   try {
@@ -131,12 +139,13 @@ async function openCamera() {
       audio: false,
     });
   } catch (err) {
-    showError(`Could not open the camera: ${err.message}`);
     openUpload();
+    showError(`Could not open the camera: ${err.message}`);
     return;
   }
   cameraActive = true;
   cameraView.srcObject = cameraStream;
+  await cameraView.play().catch(() => {});
   setState("live");
 }
 
@@ -237,8 +246,8 @@ async function analyze() {
     setState("frozen");
     speak(lastDescription);
   } catch (err) {
-    showError(err.message);
     resumeLive();
+    showError(err.message);
   }
 }
 
