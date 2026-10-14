@@ -23,6 +23,13 @@ SYSTEM_PROMPT = (
     "Write two or three sentences. No JSON, no markdown, no preamble."
 )
 
+QUESTION_PROMPT = (
+    "You are an image analyst. Look at the image and answer the user's "
+    "question about it directly and concisely. Reply with only the answer "
+    "to the question: do not re-describe the whole image and do not repeat "
+    "the question. One to three sentences. No JSON, no markdown, no preamble."
+)
+
 
 def build_model() -> Any:
     """Construct an openjiuwen ``Model`` for the configured provider/endpoint."""

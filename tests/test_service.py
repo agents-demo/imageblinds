@@ -239,6 +239,7 @@ async def test_answer_question_returns_model_reply(monkeypatch, tmp_path):
 
     assert answer == "It is made of wood."
     assert fake.messages is not None
+    assert fake.messages[0]["content"] == service.vision.QUESTION_PROMPT
     user = fake.messages[1]["content"]
     assert user[0]["text"] == "What is it made of?"
     assert user[1]["image_url"]["url"].startswith("data:image/jpeg;base64,")

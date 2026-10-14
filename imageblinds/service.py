@@ -120,7 +120,7 @@ async def answer_question(image_path: str | Path, question: str) -> str:
     reply = await asyncio.wait_for(
         model.invoke(
             [
-                {"role": "system", "content": vision.SYSTEM_PROMPT},
+                {"role": "system", "content": vision.QUESTION_PROMPT},
                 {
                     "role": "user",
                     "content": [
