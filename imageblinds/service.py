@@ -16,7 +16,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from imageblinds import dsml, vision
+from imageblinds import dsml, settings, vision
 
 RUNTIME_DIR = Path(__file__).resolve().parent.parent / "runtime"
 WORKSPACE_DIR = RUNTIME_DIR / "workspace"
@@ -101,6 +101,36 @@ async def _ask_model_directly(image_path: str) -> str:
                 ],
             },
         ]
+    )
+    content = getattr(reply, "content", None)
+    return content.strip() if isinstance(content, str) else ""
+
+
+async def answer_question(image_path: str | Path, question: str) -> str:
+    """Answer a follow-up question about ``image_path`` with the vision model.
+
+    The image is sent to the model directly as a multimodal message together
+    with the user's question. Raises on timeout so the server can surface a
+    proper error.
+    """
+    data_url = _data_url(str(image_path))
+    if data_url is None:
+        raise ValueError("The image is not readable.")
+    model = vision.build_model()
+    reply = await asyncio.wait_for(
+        model.invoke(
+            [
+                {"role": "system", "content": vision.SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": question},
+                        {"type": "image_url", "image_url": {"url": data_url}},
+                    ],
+                },
+            ]
+        ),
+        timeout=float(settings.llm_timeout()),
     )
     content = getattr(reply, "content", None)
     return content.strip() if isinstance(content, str) else ""

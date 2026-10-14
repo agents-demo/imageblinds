@@ -4,7 +4,8 @@ const cameraView = document.getElementById("camera-view");
 const photoImg = document.getElementById("photo-img");
 const photoBtn = document.getElementById("photo-btn");
 const shutterBtn = document.getElementById("shutter-btn");
-const resultOverlay = document.getElementById("result-overlay");
+const micBtn = document.getElementById("mic-btn");
+const resultPanel = document.getElementById("result-panel");
 const resultBox = document.getElementById("result");
 const errorPanel = document.getElementById("error-panel");
 const errorBox = document.getElementById("error");
@@ -19,6 +20,7 @@ const configuredBase = (window.IMAGEBLINDS_API_BASE || "").trim();
 const API_URL =
   configuredBase && configuredBase !== "__API_BASE__" ? configuredBase + "/api/analyze" : "/api/analyze";
 const TTS_URL = API_URL.replace(/\/api\/analyze$/, "/api/tts");
+const ASK_URL = API_URL.replace(/\/api\/analyze$/, "/api/ask");
 
 const secureContext =
   window.isSecureContext || ["localhost", "127.0.0.1", "::1"].includes(location.hostname);
@@ -45,7 +47,14 @@ const synth = window.speechSynthesis || null;
 let voice = null;
 let narrationAudio = null;
 let analyzeController = null;
+let askController = null;
 let ttsController = null;
+
+const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+let listening = false;
+let finalTranscript = "";
+let suppressEndSend = false;
 
 function setState(mode) {
   state = mode;
@@ -55,6 +64,26 @@ function setState(mode) {
     "aria-label",
     mode === "frozen" ? "Return to the live camera" : "Capture and analyze"
   );
+}
+
+function setResult(text) {
+  resultBox.textContent = text;
+  resultBox.classList.remove("listening-text");
+  resultPanel.hidden = false;
+  stage.classList.add("has-result");
+  micBtn.disabled = false;
+  clampPan();
+  applyTransform();
+}
+
+function hideResult() {
+  resultPanel.hidden = true;
+  stage.classList.remove("has-result");
+  resultBox.classList.remove("listening-text");
+  micBtn.disabled = true;
+  stopListening();
+  clampPan();
+  applyTransform();
 }
 
 function pickVoice() {
@@ -122,6 +151,132 @@ if (synth) {
   synth.onvoiceschanged = pickVoice;
   pickVoice();
 }
+
+function buildRecognition() {
+  const instance = new SpeechRecognitionImpl();
+  instance.lang = "en-US";
+  instance.interimResults = true;
+  instance.continuous = false;
+  instance.onresult = (event) => {
+    let interim = "";
+    finalTranscript = "";
+    for (const entry of event.results) {
+      if (entry.isFinal) finalTranscript += entry[0].transcript;
+      else interim += entry[0].transcript;
+    }
+    const transcript = finalTranscript || interim;
+    if (transcript.trim()) {
+      resultBox.textContent = transcript;
+      resultBox.classList.add("listening-text");
+      resultPanel.hidden = false;
+      stage.classList.add("has-result");
+    }
+  };
+  instance.onerror = (event) => {
+    if (event.error === "aborted" || event.error === "no-speech") return;
+    showError(`Voice input failed: ${event.error}.`);
+    stopListening();
+    setResult(lastDescription);
+  };
+  instance.onend = () => {
+    const suppressed = suppressEndSend;
+    suppressEndSend = false;
+    const transcript = finalTranscript.trim();
+    stopListening();
+    if (suppressed) return;
+    if (transcript) askQuestion(transcript);
+    else setResult(lastDescription);
+  };
+  return instance;
+}
+
+function startListening() {
+  if (listening) return;
+  if (!SpeechRecognitionImpl) {
+    showError("Voice input is not supported on this browser.");
+    return;
+  }
+  clearError();
+  stopSpeaking();
+  finalTranscript = "";
+  suppressEndSend = false;
+  recognition = recognition || buildRecognition();
+  try {
+    recognition.start();
+  } catch {
+    recognition = buildRecognition();
+    try {
+      recognition.start();
+    } catch (err) {
+      showError(`Could not start voice input: ${err.message}`);
+      return;
+    }
+  }
+  listening = true;
+  micBtn.classList.add("listening");
+  micBtn.setAttribute("aria-label", "Stop voice input");
+  resultBox.textContent = "Listening…";
+  resultBox.classList.add("listening-text");
+  resultPanel.hidden = false;
+  stage.classList.add("has-result");
+}
+
+function stopListening() {
+  if (!listening && !recognition) return;
+  suppressEndSend = true;
+  if (recognition) {
+    try {
+      recognition.abort();
+    } catch {}
+  }
+  listening = false;
+  micBtn.classList.remove("listening");
+  micBtn.setAttribute("aria-label", "Ask a voice follow-up question");
+}
+
+async function askQuestion(question) {
+  if (!currentFile || !question) return;
+  clearError();
+  setResult(`You asked: ${question}`);
+  micBtn.disabled = true;
+  const controller = new AbortController();
+  askController = controller;
+  const form = new FormData();
+  form.append("file", currentFile);
+  form.append("question", question);
+
+  try {
+    const response = await fetch(ASK_URL, {
+      method: "POST",
+      body: form,
+      signal: controller.signal,
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || data.detail || `Server error (${response.status}).`);
+    }
+    lastDescription = data.answer;
+    setResult(lastDescription);
+    speak(lastDescription);
+  } catch (err) {
+    if (err.name === "AbortError") return;
+    setResult(lastDescription);
+    showError(err.message);
+  } finally {
+    if (askController === controller) askController = null;
+  }
+}
+
+micBtn.addEventListener("click", () => {
+  if (listening) {
+    const transcript = finalTranscript.trim();
+    stopListening();
+    if (transcript) askQuestion(transcript);
+    else setResult(lastDescription);
+  } else {
+    startListening();
+  }
+});
 
 function showError(message) {
   errorBox.textContent = message;
@@ -383,7 +538,7 @@ const HIGH_RES_ENV_VIDEO = {
 
 async function openCamera() {
   clearError();
-  resultOverlay.hidden = true;
+  hideResult();
   clearPhoto();
   cameraView.hidden = false;
   setState("analyzing");
@@ -432,7 +587,7 @@ function setFile(file) {
   if (photoImg.src) URL.revokeObjectURL(photoImg.src);
   photoImg.src = URL.createObjectURL(file);
   photoImg.hidden = false;
-  resultOverlay.hidden = true;
+  hideResult();
   currentFile = file;
   setState("frozen");
   resetView();
@@ -490,7 +645,7 @@ async function freezeAndAnalyze() {
 }
 
 function resumeLive() {
-  resultOverlay.hidden = true;
+  hideResult();
   stopSpeaking();
   openCamera();
 }
@@ -501,13 +656,17 @@ function cancelToLive() {
     analyzeController.abort();
     analyzeController = null;
   }
+  if (askController) {
+    askController.abort();
+    askController = null;
+  }
+  stopListening();
   resumeLive();
 }
 
 async function analyze() {
   if (!currentFile) return;
   clearError();
-  resultOverlay.hidden = true;
   setState("analyzing");
 
   let file = currentFile;
@@ -546,8 +705,7 @@ async function analyze() {
     }
     if (seq !== analyzeSeq) return;
     lastDescription = data.description;
-    resultBox.textContent = lastDescription;
-    resultOverlay.hidden = false;
+    setResult(lastDescription);
     setState("frozen");
     speak(lastDescription);
   } catch (err) {
@@ -560,7 +718,7 @@ async function analyze() {
 }
 
 shutterBtn.addEventListener("click", () => {
-  if (analyzeController) {
+  if (analyzeController || askController || listening) {
     cancelToLive();
     return;
   }
@@ -574,11 +732,6 @@ photoBtn.addEventListener("click", () => fileInput.click());
 
 fileInput.addEventListener("change", () => {
   if (fileInput.files && fileInput.files[0]) setFile(fileInput.files[0]);
-});
-
-resultOverlay.addEventListener("click", () => {
-  resultOverlay.hidden = true;
-  stopSpeaking();
 });
 
 viewWindow.addEventListener("touchstart", onTouchStart, { passive: true });

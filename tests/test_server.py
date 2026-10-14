@@ -54,6 +54,99 @@ def test_analyze_requires_file(monkeypatch):
     assert response.status_code == 422
 
 
+async def _fake_answer(image_path, question):
+    assert str(image_path).endswith(".jpg")
+    return f"A: {question}"
+
+
+def test_ask_returns_answer(monkeypatch):
+    monkeypatch.setattr(service, "answer_question", _fake_answer)
+    client = TestClient(app)
+    response = client.post(
+        "/api/ask",
+        files={"file": ("chair.jpg", b"\xff\xd8\xff\xd9", "image/jpeg")},
+        data={"question": "What is it made of?"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"answer": "A: What is it made of?"}
+
+
+def test_ask_rejects_non_jpg(monkeypatch):
+    monkeypatch.setattr(service, "answer_question", _fake_answer)
+    client = TestClient(app)
+    response = client.post(
+        "/api/ask",
+        files={"file": ("notes.txt", b"hello", "text/plain")},
+        data={"question": "What is it?"},
+    )
+    assert response.status_code == 400
+
+
+def test_ask_rejects_empty_upload(monkeypatch):
+    monkeypatch.setattr(service, "answer_question", _fake_answer)
+    client = TestClient(app)
+    response = client.post(
+        "/api/ask",
+        files={"file": ("chair.jpg", b"", "image/jpeg")},
+        data={"question": "What is it?"},
+    )
+    assert response.status_code == 422
+
+
+def test_ask_requires_file(monkeypatch):
+    monkeypatch.setattr(service, "answer_question", _fake_answer)
+    client = TestClient(app)
+    response = client.post("/api/ask", data={"question": "What is it?"})
+    assert response.status_code == 422
+
+
+def test_ask_requires_question(monkeypatch):
+    monkeypatch.setattr(service, "answer_question", _fake_answer)
+    client = TestClient(app)
+    response = client.post(
+        "/api/ask",
+        files={"file": ("chair.jpg", b"\xff\xd8\xff\xd9", "image/jpeg")},
+    )
+    assert response.status_code == 422
+
+
+def test_ask_rejects_blank_question(monkeypatch):
+    monkeypatch.setattr(service, "answer_question", _fake_answer)
+    client = TestClient(app)
+    response = client.post(
+        "/api/ask",
+        files={"file": ("chair.jpg", b"\xff\xd8\xff\xd9", "image/jpeg")},
+        data={"question": "   "},
+    )
+    assert response.status_code == 422
+
+
+def test_ask_rejects_overlong_question(monkeypatch):
+    monkeypatch.setattr(service, "answer_question", _fake_answer)
+    client = TestClient(app)
+    response = client.post(
+        "/api/ask",
+        files={"file": ("chair.jpg", b"\xff\xd8\xff\xd9", "image/jpeg")},
+        data={"question": "x" * (server.MAX_QUESTION_CHARS + 1)},
+    )
+    assert response.status_code == 422
+
+
+def test_ask_error_returns_500(monkeypatch):
+    async def _failing_answer(image_path, question):
+        raise ConnectionError("no network")
+
+    monkeypatch.setattr(service, "answer_question", _failing_answer)
+    client = TestClient(app)
+    response = client.post(
+        "/api/ask",
+        files={"file": ("chair.jpg", b"\xff\xd8\xff\xd9", "image/jpeg")},
+        data={"question": "What is it?"},
+    )
+    assert response.status_code == 500
+    assert "error" in response.json()
+
+
 def test_index_serves_gui(monkeypatch):
     client = _client(monkeypatch)
     response = client.get("/")
@@ -103,12 +196,15 @@ def test_index_includes_camera_controls(monkeypatch):
     assert page.status_code == 200
     assert 'id="shutter-btn"' in page.text
     assert 'id="photo-btn"' in page.text
+    assert 'id="mic-btn"' in page.text
     assert 'aria-live="polite"' in page.text
 
     script = client.get("/assets/app.js")
     assert script.status_code == 200
     assert "speechSynthesis" in script.text
     assert "/api/tts" in script.text
+    assert "/api/ask" in script.text
+    assert "SpeechRecognition" in script.text
 
 
 def test_index_links_manifest_and_registers_worker(monkeypatch):

@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -29,6 +29,8 @@ STATIC_DIR = ROOT / "static"
 CERT_PATH = ROOT / "certs" / "local.crt"
 
 ALLOWED_SUFFIXES = {".jpg", ".jpeg"}
+
+MAX_QUESTION_CHARS = 500
 
 
 def _is_wsl() -> bool:
@@ -222,19 +224,26 @@ async def tts_audio(request: Request, text: str = "") -> Response:
     )
 
 
-@app.post("/api/analyze")
-async def analyze(request: Request, file: Annotated[UploadFile, File()]) -> JSONResponse:
+async def _save_upload(file: UploadFile) -> tuple[tuple[int, str] | None, Path | None]:
+    """Validate and persist an uploaded image; returns ((status, detail), path)."""
     name = file.filename or ""
     if Path(name).suffix.lower() not in ALLOWED_SUFFIXES:
-        raise HTTPException(status_code=400, detail="Only .jpg images are supported.")
-
+        return (400, "Only .jpg images are supported."), None
     content = await file.read()
     if not content:
-        raise HTTPException(status_code=422, detail="Uploaded file is empty.")
-
+        return (422, "Uploaded file is empty."), None
     workspace = service.ensure_workspace()
     image_path = workspace / "uploads" / f"{uuid.uuid4().hex}.jpg"
     image_path.write_bytes(content)
+    return None, image_path
+
+
+@app.post("/api/analyze")
+async def analyze(request: Request, file: Annotated[UploadFile, File()]) -> JSONResponse:
+    failure, image_path = await _save_upload(file)
+    if failure:
+        raise HTTPException(status_code=failure[0], detail=failure[1])
+    assert image_path is not None
 
     task = asyncio.create_task(service.describe_image(image_path))
     if not await _run_until_disconnect(request, task):
@@ -245,3 +254,32 @@ async def analyze(request: Request, file: Annotated[UploadFile, File()]) -> JSON
         return JSONResponse(status_code=500, content={"error": str(exc)})
 
     return JSONResponse(content={"description": description})
+
+
+@app.post("/api/ask")
+async def ask(
+    request: Request,
+    file: Annotated[UploadFile, File()],
+    question: Annotated[str, Form()] = "",
+) -> JSONResponse:
+    """Answer a follow-up question about an uploaded image."""
+    question = question.strip()
+    if not question:
+        raise HTTPException(status_code=422, detail="Missing question.")
+    if len(question) > MAX_QUESTION_CHARS:
+        raise HTTPException(status_code=422, detail=f"Question too long (max {MAX_QUESTION_CHARS} chars).")
+
+    failure, image_path = await _save_upload(file)
+    if failure:
+        raise HTTPException(status_code=failure[0], detail=failure[1])
+    assert image_path is not None
+
+    task = asyncio.create_task(service.answer_question(image_path, question))
+    if not await _run_until_disconnect(request, task):
+        return JSONResponse(status_code=499, content={"error": "Client disconnected."})
+    try:
+        answer = task.result()
+    except Exception as exc:  # noqa: BLE001 - surface any model/backend failure to the GUI
+        return JSONResponse(status_code=500, content={"error": str(exc)})
+
+    return JSONResponse(content={"answer": answer})

@@ -213,3 +213,52 @@ async def test_describe_image_falls_back_when_agent_cannot_read(
 
     assert text == "This image shows a chair."
     assert calls.get("image_path") == str(image)
+
+
+class FakeModel:
+    """Stands in for the vision model: records messages, returns a reply."""
+
+    def __init__(self, reply: str) -> None:
+        self.reply = reply
+        self.messages: list | None = None
+
+    async def invoke(self, messages: list) -> SimpleNamespace:
+        self.messages = messages
+        return SimpleNamespace(content=self.reply)
+
+
+@pytest.mark.asyncio
+async def test_answer_question_returns_model_reply(monkeypatch, tmp_path):
+    image = tmp_path / "chair.jpg"
+    image.write_bytes(b"\xff\xd8\xff")
+
+    fake = FakeModel("It is made of wood.")
+    monkeypatch.setattr(service.vision, "build_model", lambda: fake)
+
+    answer = await service.answer_question(image, "What is it made of?")
+
+    assert answer == "It is made of wood."
+    assert fake.messages is not None
+    user = fake.messages[1]["content"]
+    assert user[0]["text"] == "What is it made of?"
+    assert user[1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+
+
+@pytest.mark.asyncio
+async def test_answer_question_empty_reply(monkeypatch, tmp_path):
+    image = tmp_path / "chair.jpg"
+    image.write_bytes(b"\xff\xd8\xff")
+
+    monkeypatch.setattr(service.vision, "build_model", lambda: FakeModel(""))
+
+    assert await service.answer_question(image, "What is it?") == ""
+
+
+@pytest.mark.asyncio
+async def test_answer_question_rejects_unreadable_image(monkeypatch, tmp_path):
+    missing = tmp_path / "nope.jpg"
+
+    monkeypatch.setattr(service.vision, "build_model", lambda: FakeModel("x"))
+
+    with pytest.raises(ValueError):
+        await service.answer_question(missing, "What is it?")
