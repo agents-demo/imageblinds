@@ -1,4 +1,4 @@
-const CACHE = "imageblinds-v5";
+const CACHE = "imageblinds-v6";
 const PRECACHE = [
   "./",
   "./assets/config.js",

@@ -18,10 +18,10 @@ from typing import Annotated
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from imageblinds import service
+from imageblinds import service, tts
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT / "static"
@@ -181,6 +181,26 @@ async def ca_cert() -> FileResponse:
         CERT_PATH,
         media_type="application/x-x509-ca-cert",
         filename="imageblinds-ca.crt",
+    )
+
+
+@app.get("/api/tts")
+async def tts_audio(text: str = "") -> Response:
+    """Synthesize narration audio with a neural voice (edge-tts)."""
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="Missing text to narrate.")
+    if len(text) > tts.MAX_CHARS:
+        raise HTTPException(status_code=422, detail=f"Text too long (max {tts.MAX_CHARS} chars).")
+    try:
+        audio = await tts.synthesize(text)
+    except Exception as exc:  # noqa: BLE001 - any network/edge-tts failure should trigger fallback
+        return JSONResponse(status_code=502, content={"error": str(exc)})
+    if not audio:
+        return JSONResponse(status_code=502, content={"error": "TTS returned no audio."})
+    return Response(
+        content=audio,
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "public, max-age=86400"},
     )
 
 

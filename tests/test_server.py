@@ -6,7 +6,7 @@ import subprocess
 
 from fastapi.testclient import TestClient
 
-from imageblinds import server, service
+from imageblinds import server, service, tts
 from imageblinds.server import app
 
 
@@ -61,6 +61,42 @@ def test_index_serves_gui(monkeypatch):
     assert "ImageBlinds" in response.text
 
 
+def test_tts_returns_mp3(monkeypatch):
+    async def _fake_synthesize(text):
+        return b"ID3fake-mp3-bytes"
+
+    monkeypatch.setattr(tts, "synthesize", _fake_synthesize)
+    client = _client(monkeypatch)
+    response = client.get("/api/tts", params={"text": "This image shows a chair."})
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "audio/mpeg"
+    assert "max-age" in response.headers["cache-control"]
+    assert response.content == b"ID3fake-mp3-bytes"
+
+
+def test_tts_rejects_empty_text(monkeypatch):
+    client = _client(monkeypatch)
+    assert client.get("/api/tts", params={"text": "   "}).status_code == 400
+    assert client.get("/api/tts").status_code == 400
+
+
+def test_tts_rejects_overlong_text(monkeypatch):
+    client = _client(monkeypatch)
+    response = client.get("/api/tts", params={"text": "x" * (tts.MAX_CHARS + 1)})
+    assert response.status_code == 422
+
+
+def test_tts_error_returns_502(monkeypatch):
+    async def _failing_synthesize(text):
+        raise ConnectionError("no network")
+
+    monkeypatch.setattr(tts, "synthesize", _failing_synthesize)
+    client = _client(monkeypatch)
+    response = client.get("/api/tts", params={"text": "hello"})
+    assert response.status_code == 502
+    assert "error" in response.json()
+
+
 def test_index_includes_camera_controls(monkeypatch):
     client = _client(monkeypatch)
     page = client.get("/")
@@ -72,6 +108,7 @@ def test_index_includes_camera_controls(monkeypatch):
     script = client.get("/assets/app.js")
     assert script.status_code == 200
     assert "speechSynthesis" in script.text
+    assert "/api/tts" in script.text
 
 
 def test_index_links_manifest_and_registers_worker(monkeypatch):

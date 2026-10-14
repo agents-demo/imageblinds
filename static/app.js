@@ -18,6 +18,7 @@ if (location.protocol === "http:" && !["localhost", "127.0.0.1"].includes(locati
 const configuredBase = (window.IMAGEBLINDS_API_BASE || "").trim();
 const API_URL =
   configuredBase && configuredBase !== "__API_BASE__" ? configuredBase + "/api/analyze" : "/api/analyze";
+const TTS_URL = API_URL.replace(/\/api\/analyze$/, "/api/tts");
 
 const secureContext =
   window.isSecureContext || ["localhost", "127.0.0.1", "::1"].includes(location.hostname);
@@ -42,6 +43,7 @@ let analyzeSeq = 0;
 
 const synth = window.speechSynthesis || null;
 let voice = null;
+let narrationAudio = null;
 
 function setState(mode) {
   state = mode;
@@ -63,7 +65,7 @@ function pickVoice() {
     voices[0];
 }
 
-function speak(text) {
+function fallbackSpeak(text) {
   if (!synth || !text) return;
   synth.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
@@ -73,8 +75,34 @@ function speak(text) {
   synth.speak(utterance);
 }
 
+async function speak(text) {
+  if (!text) return;
+  stopSpeaking();
+  try {
+    const response = await fetch(`${TTS_URL}?text=${encodeURIComponent(text)}`);
+    if (!response.ok) throw new Error(`TTS error (${response.status}).`);
+    const blob = await response.blob();
+    if (blob.size === 0) throw new Error("TTS returned no audio.");
+    narrationAudio = new Audio(URL.createObjectURL(blob));
+    narrationAudio.onended = () => {
+      if (narrationAudio) {
+        URL.revokeObjectURL(narrationAudio.src);
+        narrationAudio = null;
+      }
+    };
+    await narrationAudio.play();
+  } catch {
+    fallbackSpeak(text);
+  }
+}
+
 function stopSpeaking() {
   if (synth) synth.cancel();
+  if (narrationAudio) {
+    narrationAudio.pause();
+    URL.revokeObjectURL(narrationAudio.src);
+    narrationAudio = null;
+  }
 }
 
 if (synth) {

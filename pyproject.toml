@@ -9,6 +9,7 @@ dependencies = [
     "uvicorn>=0.29",
     "python-multipart>=0.0.9",
     "python-dotenv>=1.0",
+    "edge-tts>=6.1",
     "openjiuwen @ git+https://github.com/openJiuwen-ai/agent-core",
 ]
 
