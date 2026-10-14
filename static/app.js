@@ -26,6 +26,7 @@ const secureContext =
   window.isSecureContext || ["localhost", "127.0.0.1", "::1"].includes(location.hostname);
 
 let state = "live";
+let pictureMode = false;
 let currentFile = null;
 let lastDescription = "";
 let cameraStream = null;
@@ -35,12 +36,10 @@ let errorTimer = null;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 8;
 const CROP_MAX_SIDE = 3072;
-const REANALYZE_DELAY_MS = 700;
 
 const view = { zoom: 1, panX: 0, panY: 0 };
 const activeTouches = new Map();
 let gesture = null;
-let reanalyzeTimer = null;
 let analyzeSeq = 0;
 
 const synth = window.speechSynthesis || null;
@@ -62,8 +61,14 @@ function setState(mode) {
   stage.classList.toggle("analyzing", mode === "analyzing");
   shutterBtn.setAttribute(
     "aria-label",
-    mode === "frozen" ? "Return to the live camera" : "Capture and analyze"
+    mode === "frozen" ? "Analyze this picture" : "Capture and analyze"
   );
+}
+
+function setPictureMode(on) {
+  pictureMode = on;
+  photoBtn.classList.toggle("picture", on);
+  photoBtn.setAttribute("aria-label", on ? "Back to the live camera" : "Upload a photo");
 }
 
 function setResult(text) {
@@ -439,7 +444,6 @@ function beginGesture() {
 
 function onTouchStart(event) {
   if (state === "analyzing") return;
-  clearTimeout(reanalyzeTimer);
   for (const touch of event.changedTouches) {
     activeTouches.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
   }
@@ -499,10 +503,6 @@ function onTouchEnd(event) {
 function finishGesture() {
   clampPan();
   applyTransform();
-  if (state === "frozen" && currentFile) {
-    clearTimeout(reanalyzeTimer);
-    reanalyzeTimer = setTimeout(() => analyze(), REANALYZE_DELAY_MS);
-  }
 }
 
 async function openStream(constraints) {
@@ -537,6 +537,7 @@ const HIGH_RES_ENV_VIDEO = {
 };
 
 async function openCamera() {
+  setPictureMode(false);
   clearError();
   hideResult();
   clearPhoto();
@@ -582,16 +583,26 @@ async function openCamera() {
 
 function setFile(file) {
   if (!file) return;
+  analyzeSeq++;
+  if (analyzeController) {
+    analyzeController.abort();
+    analyzeController = null;
+  }
+  if (askController) {
+    askController.abort();
+    askController = null;
+  }
   clearError();
   stopCamera();
   if (photoImg.src) URL.revokeObjectURL(photoImg.src);
   photoImg.src = URL.createObjectURL(file);
   photoImg.hidden = false;
   hideResult();
+  stopSpeaking();
   currentFile = file;
+  setPictureMode(true);
   setState("frozen");
   resetView();
-  analyze();
 }
 
 function captureFrame() {
@@ -635,6 +646,7 @@ async function freezeAndAnalyze() {
     photoImg.hidden = false;
     stopCamera();
     currentFile = file;
+    setPictureMode(true);
   } catch (err) {
     showError(err.message);
     setState("live");
@@ -662,6 +674,20 @@ function cancelToLive() {
   }
   stopListening();
   resumeLive();
+}
+
+function cancelToPicture() {
+  analyzeSeq++;
+  if (analyzeController) {
+    analyzeController.abort();
+    analyzeController = null;
+  }
+  if (askController) {
+    askController.abort();
+    askController = null;
+  }
+  stopListening();
+  setState("frozen");
 }
 
 async function analyze() {
@@ -710,7 +736,8 @@ async function analyze() {
     speak(lastDescription);
   } catch (err) {
     if (seq !== analyzeSeq) return;
-    resumeLive();
+    if (pictureMode) setState("frozen");
+    else resumeLive();
     showError(err.message);
   } finally {
     if (analyzeController === controller) analyzeController = null;
@@ -719,16 +746,20 @@ async function analyze() {
 
 shutterBtn.addEventListener("click", () => {
   if (analyzeController || askController || listening) {
-    cancelToLive();
+    if (pictureMode) cancelToPicture();
+    else cancelToLive();
     return;
   }
   if (state === "analyzing") return;
-  if (state === "frozen") resumeLive();
+  if (pictureMode) analyze();
   else if (cameraActive) freezeAndAnalyze();
   else openCamera();
 });
 
-photoBtn.addEventListener("click", () => fileInput.click());
+photoBtn.addEventListener("click", () => {
+  if (pictureMode) cancelToLive();
+  else fileInput.click();
+});
 
 fileInput.addEventListener("change", () => {
   if (fileInput.files && fileInput.files[0]) setFile(fileInput.files[0]);
