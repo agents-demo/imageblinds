@@ -102,6 +102,37 @@ function clearPhoto() {
   currentFile = null;
 }
 
+async function openStream(constraints) {
+  try {
+    return await navigator.mediaDevices.getUserMedia({ video: constraints, audio: false });
+  } catch (err) {
+    if (err.name !== "OverconstrainedError") throw err;
+    return null;
+  }
+}
+
+function storedCameraId() {
+  try {
+    return localStorage.getItem("imageblinds.cameraId.v2") || "";
+  } catch {
+    return "";
+  }
+}
+
+function rememberCameraId(stream) {
+  try {
+    const id = stream.getVideoTracks()[0].getSettings().deviceId;
+    if (id) localStorage.setItem("imageblinds.cameraId.v2", id);
+  } catch {}
+}
+
+const HIGH_RES_ENV_VIDEO = {
+  facingMode: { exact: "environment" },
+  width: { min: 1920, ideal: 3840 },
+  height: { min: 1080, ideal: 2160 },
+  aspectRatio: { ideal: 16 / 9 },
+};
+
 async function openCamera() {
   clearError();
   resultOverlay.hidden = true;
@@ -120,15 +151,17 @@ async function openCamera() {
     return;
   }
   try {
-    try {
-      cameraStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-        audio: false,
-      });
-    } catch (err) {
-      if (err.name !== "OverconstrainedError") throw err;
+    cameraStream = null;
+    const savedId = storedCameraId();
+    if (savedId) {
+      cameraStream = await openStream({ deviceId: { exact: savedId }, ...HIGH_RES_ENV_VIDEO });
+    }
+    if (!cameraStream) cameraStream = await openStream(HIGH_RES_ENV_VIDEO);
+    if (!cameraStream) cameraStream = await openStream({ facingMode: "environment" });
+    if (!cameraStream) {
       cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
     }
+    rememberCameraId(cameraStream);
   } catch (err) {
     showError(`Could not open the camera: ${err.message}`);
     setState("live");
