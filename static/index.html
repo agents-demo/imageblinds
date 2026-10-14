@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1" />
   <title>ImageBlinds — describe a photo</title>
   <link rel="stylesheet" href="./assets/style.css" />
   <link rel="manifest" href="./manifest.json" />
@@ -22,8 +22,10 @@
   </header>
 
   <main id="stage">
-    <video id="camera-view" autoplay playsinline muted></video>
-    <img id="photo-img" alt="Frozen photo" hidden />
+    <div id="view-window">
+      <video id="camera-view" autoplay playsinline muted></video>
+      <img id="photo-img" alt="Frozen photo" hidden />
+    </div>
 
     <section id="cert-banner" class="banner" hidden>
       <p>

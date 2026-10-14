@@ -1,4 +1,5 @@
 const stage = document.getElementById("stage");
+const viewWindow = document.getElementById("view-window");
 const cameraView = document.getElementById("camera-view");
 const photoImg = document.getElementById("photo-img");
 const photoBtn = document.getElementById("photo-btn");
@@ -27,6 +28,17 @@ let lastDescription = "";
 let cameraStream = null;
 let cameraActive = false;
 let errorTimer = null;
+
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 8;
+const CROP_MAX_SIDE = 3072;
+const REANALYZE_DELAY_MS = 700;
+
+const view = { zoom: 1, panX: 0, panY: 0 };
+const activeTouches = new Map();
+let gesture = null;
+let reanalyzeTimer = null;
+let analyzeSeq = 0;
 
 const synth = window.speechSynthesis || null;
 let voice = null;
@@ -102,6 +114,201 @@ function clearPhoto() {
   currentFile = null;
 }
 
+function activeMedia() {
+  return state === "live" ? cameraView : photoImg;
+}
+
+function mediaSize() {
+  if (activeMedia() === cameraView) {
+    return { width: cameraView.videoWidth, height: cameraView.videoHeight };
+  }
+  return { width: photoImg.naturalWidth, height: photoImg.naturalHeight };
+}
+
+function applyTransform() {
+  const media = activeMedia();
+  if (!media) return;
+  media.style.transform = `translate3d(${view.panX}px, ${view.panY}px, 0) scale(${view.zoom})`;
+}
+
+function resetView() {
+  view.zoom = 1;
+  view.panX = 0;
+  view.panY = 0;
+  applyTransform();
+}
+
+function containRect(contentWidth, contentHeight, viewWidth, viewHeight) {
+  const scale = Math.min(viewWidth / contentWidth, viewHeight / contentHeight);
+  const width = contentWidth * scale;
+  const height = contentHeight * scale;
+  return { x: (viewWidth - width) / 2, y: (viewHeight - height) / 2, width, height, scale };
+}
+
+function clampPan() {
+  const viewWidth = viewWindow.clientWidth;
+  const viewHeight = viewWindow.clientHeight;
+  const { width: contentWidth, height: contentHeight } = mediaSize();
+  if (!contentWidth || !contentHeight || !viewWidth || !viewHeight) return;
+  const rect = containRect(contentWidth, contentHeight, viewWidth, viewHeight);
+  const contentW = rect.width * view.zoom;
+  const contentH = rect.height * view.zoom;
+  const contentX = rect.x * view.zoom + view.panX;
+  const contentY = rect.y * view.zoom + view.panY;
+  if (contentW <= viewWidth) {
+    view.panX = (viewWidth - contentW) / 2 - rect.x * view.zoom;
+  } else {
+    view.panX = Math.min(
+      -rect.x * view.zoom,
+      Math.max(viewWidth - contentW - rect.x * view.zoom, view.panX)
+    );
+  }
+  if (contentH <= viewHeight) {
+    view.panY = (viewHeight - contentH) / 2 - rect.y * view.zoom;
+  } else {
+    view.panY = Math.min(
+      -rect.y * view.zoom,
+      Math.max(viewHeight - contentH - rect.y * view.zoom, view.panY)
+    );
+  }
+}
+
+function visibleCrop(contentWidth, contentHeight) {
+  const viewWidth = viewWindow.clientWidth;
+  const viewHeight = viewWindow.clientHeight;
+  const rect = containRect(contentWidth, contentHeight, viewWidth, viewHeight);
+  const zoom = view.zoom;
+  const vx0 = Math.max((0 - view.panX) / zoom, rect.x);
+  const vy0 = Math.max((0 - view.panY) / zoom, rect.y);
+  const vx1 = Math.min((viewWidth - view.panX) / zoom, rect.x + rect.width);
+  const vy1 = Math.min((viewHeight - view.panY) / zoom, rect.y + rect.height);
+  const sx = Math.max(0, Math.round((vx0 - rect.x) / rect.scale));
+  const sy = Math.max(0, Math.round((vy0 - rect.y) / rect.scale));
+  const sw = Math.max(1, Math.min(contentWidth - sx, Math.round((vx1 - vx0) / rect.scale)));
+  const sh = Math.max(1, Math.min(contentHeight - sy, Math.round((vy1 - vy0) / rect.scale)));
+  const full = sw >= contentWidth - 1 && sh >= contentHeight - 1;
+  const scale = Math.min(1, CROP_MAX_SIDE / Math.max(sw, sh));
+  return {
+    sx,
+    sy,
+    sw,
+    sh,
+    dw: Math.max(1, Math.round(sw * scale)),
+    dh: Math.max(1, Math.round(sh * scale)),
+    full,
+  };
+}
+
+function cropElement(media, crop) {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = crop.dw;
+    canvas.height = crop.dh;
+    canvas
+      .getContext("2d")
+      .drawImage(media, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, crop.dw, crop.dh);
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("Could not crop the photo."))),
+      "image/jpeg",
+      0.9
+    );
+  });
+}
+
+function distance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function midpoint(a, b) {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+function beginGesture() {
+  const points = [...activeTouches.values()];
+  if (!points.length) {
+    gesture = null;
+    return;
+  }
+  gesture = {
+    mode: points.length >= 2 ? "pinch" : "pan",
+    startZoom: view.zoom,
+    startPanX: view.panX,
+    startPanY: view.panY,
+    startDist: points.length >= 2 ? distance(points[0], points[1]) : 0,
+    startMid: points.length >= 2 ? midpoint(points[0], points[1]) : null,
+    moved: false,
+    last: points[points.length - 1],
+  };
+}
+
+function onTouchStart(event) {
+  if (state === "analyzing") return;
+  clearTimeout(reanalyzeTimer);
+  for (const touch of event.changedTouches) {
+    activeTouches.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
+  }
+  beginGesture();
+}
+
+function onTouchMove(event) {
+  event.preventDefault();
+  if (!gesture) return;
+  for (const touch of event.changedTouches) {
+    const point = activeTouches.get(touch.identifier);
+    if (point) {
+      point.x = touch.clientX;
+      point.y = touch.clientY;
+    }
+  }
+  const points = [...activeTouches.values()];
+  if (gesture.mode === "pinch" && points.length >= 2) {
+    const dist = distance(points[0], points[1]);
+    if (dist > 0 && gesture.startDist > 0) {
+      const zoom = Math.min(
+        MAX_ZOOM,
+        Math.max(MIN_ZOOM, gesture.startZoom * (dist / gesture.startDist))
+      );
+      view.zoom = zoom;
+      view.panX = gesture.startMid.x - (gesture.startMid.x - gesture.startPanX) * (zoom / gesture.startZoom);
+      view.panY = gesture.startMid.y - (gesture.startMid.y - gesture.startPanY) * (zoom / gesture.startZoom);
+      gesture.moved = true;
+    }
+  } else if (points.length === 1) {
+    const point = points[0];
+    if (gesture.last) {
+      view.panX += point.x - gesture.last.x;
+      view.panY += point.y - gesture.last.y;
+      gesture.moved = true;
+    }
+    gesture.last = { x: point.x, y: point.y };
+    gesture.mode = "pan";
+  }
+  clampPan();
+  applyTransform();
+}
+
+function onTouchEnd(event) {
+  for (const touch of event.changedTouches) {
+    activeTouches.delete(touch.identifier);
+  }
+  if (!activeTouches.size) {
+    const moved = gesture ? gesture.moved : false;
+    gesture = null;
+    if (moved) finishGesture();
+  } else {
+    beginGesture();
+  }
+}
+
+function finishGesture() {
+  clampPan();
+  applyTransform();
+  if (state === "frozen" && currentFile) {
+    clearTimeout(reanalyzeTimer);
+    reanalyzeTimer = setTimeout(() => analyze(), REANALYZE_DELAY_MS);
+  }
+}
+
 async function openStream(constraints) {
   try {
     return await navigator.mediaDevices.getUserMedia({ video: constraints, audio: false });
@@ -143,11 +350,13 @@ async function openCamera() {
   if (!secureContext) {
     showError("The camera needs HTTPS (or localhost). Open the https:// address of this app.");
     setState("live");
+    resetView();
     return;
   }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     showError("Camera is not available on this device.");
     setState("live");
+    resetView();
     return;
   }
   try {
@@ -165,12 +374,14 @@ async function openCamera() {
   } catch (err) {
     showError(`Could not open the camera: ${err.message}`);
     setState("live");
+    resetView();
     return;
   }
   cameraActive = true;
   cameraView.srcObject = cameraStream;
   await cameraView.play().catch(() => {});
   setState("live");
+  resetView();
 }
 
 function setFile(file) {
@@ -183,6 +394,7 @@ function setFile(file) {
   resultOverlay.hidden = true;
   currentFile = file;
   setState("frozen");
+  resetView();
   analyze();
 }
 
@@ -192,10 +404,19 @@ function captureFrame() {
       reject(new Error("The camera is still starting. Try again."));
       return;
     }
+    const crop = visibleCrop(cameraView.videoWidth, cameraView.videoHeight);
     const canvas = document.createElement("canvas");
-    canvas.width = cameraView.videoWidth;
-    canvas.height = cameraView.videoHeight;
-    canvas.getContext("2d").drawImage(cameraView, 0, 0);
+    if (crop.full) {
+      canvas.width = cameraView.videoWidth;
+      canvas.height = cameraView.videoHeight;
+      canvas.getContext("2d").drawImage(cameraView, 0, 0);
+    } else {
+      canvas.width = crop.dw;
+      canvas.height = crop.dh;
+      canvas
+        .getContext("2d")
+        .drawImage(cameraView, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, crop.dw, crop.dh);
+    }
     canvas.toBlob(
       (blob) => {
         if (blob) resolve(new File([blob], "camera.jpg", { type: "image/jpeg" }));
@@ -212,6 +433,7 @@ async function freezeAndAnalyze() {
   setState("analyzing");
   try {
     const file = await captureFrame();
+    resetView();
     if (photoImg.src) URL.revokeObjectURL(photoImg.src);
     photoImg.src = URL.createObjectURL(file);
     photoImg.hidden = false;
@@ -238,8 +460,26 @@ async function analyze() {
   resultOverlay.hidden = true;
   setState("analyzing");
 
+  let file = currentFile;
+  const photoWidth = photoImg.naturalWidth;
+  const photoHeight = photoImg.naturalHeight;
+  if (photoWidth && photoHeight) {
+    const crop = visibleCrop(photoWidth, photoHeight);
+    if (!crop.full) {
+      try {
+        const blob = await cropElement(photoImg, crop);
+        file = new File([blob], "crop.jpg", { type: "image/jpeg" });
+      } catch (err) {
+        setState("frozen");
+        showError(err.message);
+        return;
+      }
+    }
+  }
+
+  const seq = ++analyzeSeq;
   const form = new FormData();
-  form.append("file", currentFile);
+  form.append("file", file);
 
   try {
     const response = await fetch(API_URL, { method: "POST", body: form });
@@ -247,12 +487,14 @@ async function analyze() {
     if (!response.ok) {
       throw new Error(data.error || data.detail || `Server error (${response.status}).`);
     }
+    if (seq !== analyzeSeq) return;
     lastDescription = data.description;
     resultBox.textContent = lastDescription;
     resultOverlay.hidden = false;
     setState("frozen");
     speak(lastDescription);
   } catch (err) {
+    if (seq !== analyzeSeq) return;
     resumeLive();
     showError(err.message);
   }
@@ -269,6 +511,25 @@ photoBtn.addEventListener("click", () => fileInput.click());
 
 fileInput.addEventListener("change", () => {
   if (fileInput.files && fileInput.files[0]) setFile(fileInput.files[0]);
+});
+
+resultOverlay.addEventListener("click", () => {
+  resultOverlay.hidden = true;
+  stopSpeaking();
+});
+
+viewWindow.addEventListener("touchstart", onTouchStart, { passive: true });
+viewWindow.addEventListener("touchmove", onTouchMove, { passive: false });
+viewWindow.addEventListener("touchend", onTouchEnd);
+viewWindow.addEventListener("touchcancel", onTouchEnd);
+
+document.addEventListener("gesturestart", (event) => event.preventDefault());
+document.addEventListener("gesturechange", (event) => event.preventDefault());
+document.addEventListener("gestureend", (event) => event.preventDefault());
+
+window.addEventListener("resize", () => {
+  clampPan();
+  applyTransform();
 });
 
 document.addEventListener("dragover", (event) => {
