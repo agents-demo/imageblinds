@@ -44,6 +44,8 @@ let analyzeSeq = 0;
 const synth = window.speechSynthesis || null;
 let voice = null;
 let narrationAudio = null;
+let analyzeController = null;
+let ttsController = null;
 
 function setState(mode) {
   state = mode;
@@ -78,8 +80,12 @@ function fallbackSpeak(text) {
 async function speak(text) {
   if (!text) return;
   stopSpeaking();
+  const controller = new AbortController();
+  ttsController = controller;
   try {
-    const response = await fetch(`${TTS_URL}?text=${encodeURIComponent(text)}`);
+    const response = await fetch(`${TTS_URL}?text=${encodeURIComponent(text)}`, {
+      signal: controller.signal,
+    });
     if (!response.ok) throw new Error(`TTS error (${response.status}).`);
     const blob = await response.blob();
     if (blob.size === 0) throw new Error("TTS returned no audio.");
@@ -91,12 +97,19 @@ async function speak(text) {
       }
     };
     await narrationAudio.play();
-  } catch {
+  } catch (err) {
+    if (err.name === "AbortError") return;
     fallbackSpeak(text);
+  } finally {
+    if (ttsController === controller) ttsController = null;
   }
 }
 
 function stopSpeaking() {
+  if (ttsController) {
+    ttsController.abort();
+    ttsController = null;
+  }
   if (synth) synth.cancel();
   if (narrationAudio) {
     narrationAudio.pause();
@@ -482,6 +495,15 @@ function resumeLive() {
   openCamera();
 }
 
+function cancelToLive() {
+  analyzeSeq++;
+  if (analyzeController) {
+    analyzeController.abort();
+    analyzeController = null;
+  }
+  resumeLive();
+}
+
 async function analyze() {
   if (!currentFile) return;
   clearError();
@@ -506,11 +528,18 @@ async function analyze() {
   }
 
   const seq = ++analyzeSeq;
+  if (analyzeController) analyzeController.abort();
+  const controller = new AbortController();
+  analyzeController = controller;
   const form = new FormData();
   form.append("file", file);
 
   try {
-    const response = await fetch(API_URL, { method: "POST", body: form });
+    const response = await fetch(API_URL, {
+      method: "POST",
+      body: form,
+      signal: controller.signal,
+    });
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data.error || data.detail || `Server error (${response.status}).`);
@@ -525,10 +554,16 @@ async function analyze() {
     if (seq !== analyzeSeq) return;
     resumeLive();
     showError(err.message);
+  } finally {
+    if (analyzeController === controller) analyzeController = null;
   }
 }
 
 shutterBtn.addEventListener("click", () => {
+  if (analyzeController) {
+    cancelToLive();
+    return;
+  }
   if (state === "analyzing") return;
   if (state === "frozen") resumeLive();
   else if (cameraActive) freezeAndAnalyze();

@@ -8,6 +8,7 @@ Wi-Fi connections).
 
 from __future__ import annotations
 
+import asyncio
 import re
 import socket
 import subprocess
@@ -16,7 +17,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -184,15 +185,32 @@ async def ca_cert() -> FileResponse:
     )
 
 
+async def _run_until_disconnect(request: Request, task: asyncio.Task) -> bool:
+    """Await ``task`` but cancel it as soon as the client disconnects.
+
+    Returns ``True`` when the client is still connected and ``task`` finished,
+    ``False`` when the client went away and the task was cancelled.
+    """
+    while not task.done():
+        if await request.is_disconnected():
+            task.cancel()
+            return False
+        await asyncio.sleep(0.2)
+    return True
+
+
 @app.get("/api/tts")
-async def tts_audio(text: str = "") -> Response:
+async def tts_audio(request: Request, text: str = "") -> Response:
     """Synthesize narration audio with a neural voice (edge-tts)."""
     if not text.strip():
         raise HTTPException(status_code=400, detail="Missing text to narrate.")
     if len(text) > tts.MAX_CHARS:
         raise HTTPException(status_code=422, detail=f"Text too long (max {tts.MAX_CHARS} chars).")
+    task = asyncio.create_task(tts.synthesize(text))
+    if not await _run_until_disconnect(request, task):
+        return JSONResponse(status_code=499, content={"error": "Client disconnected."})
     try:
-        audio = await tts.synthesize(text)
+        audio = task.result()
     except Exception as exc:  # noqa: BLE001 - any network/edge-tts failure should trigger fallback
         return JSONResponse(status_code=502, content={"error": str(exc)})
     if not audio:
@@ -205,7 +223,7 @@ async def tts_audio(text: str = "") -> Response:
 
 
 @app.post("/api/analyze")
-async def analyze(file: Annotated[UploadFile, File()]) -> JSONResponse:
+async def analyze(request: Request, file: Annotated[UploadFile, File()]) -> JSONResponse:
     name = file.filename or ""
     if Path(name).suffix.lower() not in ALLOWED_SUFFIXES:
         raise HTTPException(status_code=400, detail="Only .jpg images are supported.")
@@ -218,8 +236,11 @@ async def analyze(file: Annotated[UploadFile, File()]) -> JSONResponse:
     image_path = workspace / "uploads" / f"{uuid.uuid4().hex}.jpg"
     image_path.write_bytes(content)
 
+    task = asyncio.create_task(service.describe_image(image_path))
+    if not await _run_until_disconnect(request, task):
+        return JSONResponse(status_code=499, content={"error": "Client disconnected."})
     try:
-        description = await service.describe_image(image_path)
+        description = task.result()
     except Exception as exc:  # noqa: BLE001 - surface any model/backend failure to the GUI
         return JSONResponse(status_code=500, content={"error": str(exc)})
 
