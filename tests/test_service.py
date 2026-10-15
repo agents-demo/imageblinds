@@ -464,6 +464,14 @@ def test_keyword_command_returns_none_for_unrelated_text():
     assert service._keyword_command("hello there") is None
 
 
+def test_prompts_require_the_requested_language():
+    assert "Answer in English only" in service.vision.SYSTEM_PROMPT
+    assert "Answer in English only" in service.vision.QUESTION_PROMPT
+    assert "只用中文回答" in service.vision.SYSTEM_PROMPT_ZH
+    assert "只用中文回答" in service.vision.QUESTION_PROMPT_ZH
+    assert "只用中文回答" in service.vision.DIRECT_DESCRIBE_ZH
+
+
 def test_keyword_command_does_not_swallow_follow_up_questions():
     assert service._keyword_command("what color is the chair") is None
     assert service._keyword_command("is the milk expired") is None

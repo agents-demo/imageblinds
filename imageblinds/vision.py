@@ -20,7 +20,8 @@ SYSTEM_PROMPT = (
     "You are an image analyst. Read the image with read_file and return a "
     "detailed plain-text description of what is in the image: the main "
     "object(s), their color, material, shape, parts, and surroundings. "
-    "Write two or three sentences. No JSON, no markdown, no preamble. "
+    "Write two or three sentences. Answer in English only. "
+    "No JSON, no markdown, no preamble. "
     "Comply with ASD-STE100 Simplified Technical English: use approved words, "
     "short sentences, one idea per sentence, and active voice."
 )
@@ -29,14 +30,15 @@ QUESTION_PROMPT = (
     "You are an image analyst. Look at the image and answer the user's "
     "question about it directly and concisely. Reply with only the answer "
     "to the question: do not re-describe the whole image and do not repeat "
-    "the question. One to three sentences. No JSON, no markdown, no preamble. "
+    "the question. One to three sentences. Answer in English only. "
+    "No JSON, no markdown, no preamble. "
     "Comply with ASD-STE100 Simplified Technical English: use approved words, "
     "short sentences, one idea per sentence, and active voice."
 )
 
 SYSTEM_PROMPT_ZH = (
     "你是一名图像分析员。使用 read_file 工具读取图像，并用纯文本详细描述图像内容："
-    "主要物体、其颜色、材质、形状、部件以及周围环境。写两到三句话。"
+    "主要物体、其颜色、材质、形状、部件以及周围环境。写两到三句话。只用中文回答。"
     "不要输出 JSON、Markdown 或任何前言。"
     "使用简短句子，每句只表达一个意思，并使用主动语态。"
 )
@@ -44,12 +46,13 @@ SYSTEM_PROMPT_ZH = (
 QUESTION_PROMPT_ZH = (
     "你是一名图像分析员。查看图像并直接、简洁地回答用户关于该图像的问题。"
     "只回答问题的答案：不要重新描述整幅图像，也不要重复问题。"
-    "一到三句话。不要输出 JSON、Markdown 或任何前言。"
+    "一到三句话。只用中文回答。不要输出 JSON、Markdown 或任何前言。"
     "使用简短句子，每句只表达一个意思，并使用主动语态。"
 )
 
 DIRECT_DESCRIBE_ZH = (
-    "详细描述图像：主要物体、其颜色、材质、形状、部件和周围环境。两到三句话。"
+    "用中文详细描述图像：主要物体、其颜色、材质、形状、部件和周围环境。"
+    "两到三句话。只用中文回答。"
 )
 
 AGENT_QUERY_ZH = "读取位于 {path} 的图像并描述其中的内容。"
@@ -113,7 +116,7 @@ def direct_describe_text(lang: str = "en") -> str:
     return (
         "Describe the image in detail: the main object(s), "
         "their color, material, shape, parts, and surroundings. "
-        "Two or three sentences."
+        "Two or three sentences. Answer in English only."
     )
 
 
