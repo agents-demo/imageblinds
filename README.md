@@ -27,6 +27,13 @@ frame, sends it to the vision agent and shows (and speaks) the result over the f
 pressing it again returns to the live camera. The photo icon on the right opens the file
 picker; the picked (or dropped) JPG is analyzed the same way.
 
+Double-tap (or double-click) anywhere on the screen — except on a button — to speak a
+command. The voice agent interprets it: "describe image" acts like the shutter, "change
+language" switches English/Chinese, and "open …" (say a URL, e.g. "open example dot com")
+navigates to that site. Anything that is not a command is asked as a follow-up question
+about the picture, exactly like the microphone button. The app version is shown in the
+language settings panel (bump `IMAGEBLINDS_VERSION` in `static/config.js` on every change).
+
 > The service worker caches assets (cache-first). After an app update, reload the page
 > twice: the first reload installs the new service worker, the second picks up the new assets.
 

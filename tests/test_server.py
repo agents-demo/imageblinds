@@ -225,6 +225,80 @@ def test_ask_error_returns_500(monkeypatch):
     assert "error" in response.json()
 
 
+async def _fake_interpret(command, lang="en"):
+    assert lang in {"en", "zh"}
+    return {"action": "language", "language": "zh"}
+
+
+def test_command_returns_parsed_action(monkeypatch):
+    monkeypatch.setattr(service, "interpret_command", _fake_interpret)
+    client = TestClient(app)
+    response = client.post("/api/command", data={"command": "switch to Chinese"})
+    assert response.status_code == 200
+    assert response.json() == {"action": "language", "language": "zh"}
+
+
+def test_command_passes_language_to_service(monkeypatch):
+    calls: dict = {}
+
+    async def _capturing_interpret(command, lang="en"):
+        calls["lang"] = lang
+        return {"action": "describe"}
+
+    monkeypatch.setattr(service, "interpret_command", _capturing_interpret)
+    client = TestClient(app)
+    response = client.post("/api/command", data={"command": "描述图片", "lang": "zh"})
+    assert response.status_code == 200
+    assert response.json() == {"action": "describe"}
+    assert calls.get("lang") == "zh"
+
+
+def test_command_defaults_to_english(monkeypatch):
+    calls: dict = {}
+
+    async def _capturing_interpret(command, lang="en"):
+        calls["lang"] = lang
+        return {"action": "unknown"}
+
+    monkeypatch.setattr(service, "interpret_command", _capturing_interpret)
+    client = TestClient(app)
+    response = client.post("/api/command", data={"command": "open example.com"})
+    assert response.status_code == 200
+    assert calls.get("lang") == "en"
+
+
+def test_command_rejects_missing_command(monkeypatch):
+    monkeypatch.setattr(service, "interpret_command", _fake_interpret)
+    client = TestClient(app)
+    assert client.post("/api/command").status_code == 422
+    assert client.post("/api/command", data={"command": "   "}).status_code == 422
+
+
+def test_command_rejects_overlong_command(monkeypatch):
+    monkeypatch.setattr(service, "interpret_command", _fake_interpret)
+    client = TestClient(app)
+    response = client.post("/api/command", data={"command": "x" * (server.MAX_COMMAND_CHARS + 1)})
+    assert response.status_code == 422
+
+
+def test_command_rejects_unknown_language(monkeypatch):
+    monkeypatch.setattr(service, "interpret_command", _fake_interpret)
+    client = TestClient(app)
+    response = client.post("/api/command", data={"command": "open example.com", "lang": "fr"})
+    assert response.status_code == 422
+
+
+def test_command_unknown_on_service_failure(monkeypatch):
+    async def _failing_interpret(command, lang="en"):
+        raise ConnectionError("no network")
+
+    monkeypatch.setattr(service, "interpret_command", _failing_interpret)
+    client = TestClient(app)
+    response = client.post("/api/command", data={"command": "describe image"})
+    assert response.status_code == 200
+    assert response.json() == {"action": "unknown"}
+
+
 def test_index_serves_gui(monkeypatch):
     client = _client(monkeypatch)
     response = client.get("/")
@@ -304,9 +378,13 @@ def test_index_includes_camera_controls(monkeypatch):
     assert "speechSynthesis" in script.text
     assert "/api/tts" in script.text
     assert "/api/ask" in script.text
+    assert "/api/command" in script.text
+    assert "pointerup" in script.text
+    assert "navigator.vibrate" in script.text
     assert "SpeechRecognition" in script.text
     assert "imageblinds.lang" in script.text
     assert "lang-zh" in script.text
+    assert 'id="version-text"' in page.text
 
 
 def test_index_links_manifest_and_registers_worker(monkeypatch):

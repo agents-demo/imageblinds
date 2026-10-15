@@ -56,6 +56,32 @@ AGENT_QUERY_ZH = "读取位于 {path} 的图像并描述其中的内容。"
 
 AGENT_QUERY_EN = "Read the image at {path} and describe what is in it."
 
+COMMAND_PROMPT = (
+    "You are the voice-command interpreter of a camera app for blind users. "
+    "The user spoke a command after double-tapping the screen. Classify it and "
+    "reply with exactly one line in one of these formats:\n"
+    "ACTION: describe\n"
+    "ACTION: language LANGUAGE: en\n"
+    "ACTION: language LANGUAGE: zh\n"
+    "ACTION: open URL: <url>\n"
+    "ACTION: unknown\n"
+    'Use "describe" when the user wants the picture analyzed or described '
+    "(like pressing the shutter button). Be generous: phrasings such as "
+    '"describe the scene", "tell me about the image", "what do you see", '
+    '"analyze the photo" or "read the picture" all mean ACTION: describe. '
+    'Use "language" with the language code the user wants; when the user only '
+    'says "change language" or "switch language" without naming one, pick the '
+    "other language relative to the current language stated in the message. "
+    'Use "open" when the user wants to visit a website: normalize the URL - '
+    'add "https://" when the scheme is missing, remove spaces, and fix speech '
+    'artifacts such as "dot", "slash", "colon" and "dash". '
+    'Use "unknown" for anything else, for unclear commands, and for specific '
+    'questions about the picture (for example "what color is the chair" or '
+    '"is the milk expired") - those are not commands and will be answered as '
+    "questions about the picture. "
+    "Reply with the single line only: no explanation, no markdown, no preamble."
+)
+
 _LANGS = ("en", "zh")
 
 

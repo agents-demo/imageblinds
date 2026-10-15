@@ -31,6 +31,7 @@ CERT_PATH = ROOT / "certs" / "local.crt"
 ALLOWED_SUFFIXES = {".jpg", ".jpeg"}
 
 MAX_QUESTION_CHARS = 500
+MAX_COMMAND_CHARS = 500
 
 
 def _is_wsl() -> bool:
@@ -294,3 +295,28 @@ async def ask(
         return JSONResponse(status_code=500, content={"error": str(exc)})
 
     return JSONResponse(content={"answer": answer})
+
+
+@app.post("/api/command")
+async def command(
+    request: Request,
+    command: Annotated[str, Form()] = "",
+    lang: Annotated[str, Form()] = "en",
+) -> JSONResponse:
+    """Interpret a spoken voice command (double-tap) into an app action."""
+    command = command.strip()
+    if not command:
+        raise HTTPException(status_code=422, detail="Missing command.")
+    if len(command) > MAX_COMMAND_CHARS:
+        raise HTTPException(status_code=422, detail=f"Command too long (max {MAX_COMMAND_CHARS} chars).")
+    if not vision.is_lang(lang):
+        raise HTTPException(status_code=422, detail=f"Unsupported language: {lang}.")
+
+    task = asyncio.create_task(service.interpret_command(command, lang=lang))
+    if not await _run_until_disconnect(request, task):
+        return JSONResponse(status_code=499, content={"error": "Client disconnected."})
+    try:
+        result = task.result()
+    except Exception:  # noqa: BLE001 - any model failure means "unknown" for the GUI
+        result = {"action": "unknown"}
+    return JSONResponse(content=result)

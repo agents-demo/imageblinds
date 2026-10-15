@@ -90,6 +90,22 @@ const API_URL =
   configuredBase && configuredBase !== "__API_BASE__" ? configuredBase + "/api/analyze" : "/api/analyze";
 const TTS_URL = API_URL.replace(/\/api\/analyze$/, "/api/tts");
 const ASK_URL = API_URL.replace(/\/api\/analyze$/, "/api/ask");
+const COMMAND_URL = API_URL.replace(/\/api\/analyze$/, "/api/command");
+
+const APP_VERSION = (window.IMAGEBLINDS_VERSION || "").trim() || "1.04";
+if (APP_VERSION) {
+  const settingsPanel = document.getElementById("settings-panel");
+  const versionText =
+    document.getElementById("version-text") ||
+    (() => {
+      const element = document.createElement("p");
+      element.id = "version-text";
+      if (settingsPanel) settingsPanel.appendChild(element);
+      return element;
+    })();
+  versionText.textContent = `v${APP_VERSION}`;
+  console.log(`ImageBlinds v${APP_VERSION}`);
+}
 
 const secureContext =
   window.isSecureContext || ["localhost", "127.0.0.1", "::1"].includes(location.hostname);
@@ -123,6 +139,18 @@ let recognition = null;
 let listening = false;
 let finalTranscript = "";
 let suppressEndSend = false;
+let voiceMode = "question";
+let commandController = null;
+let lastVoiceActivationAt = 0;
+
+const DOUBLE_TAP_MS = 600;
+const DOUBLE_TAP_DIST = 60;
+const TAP_MOVE_TOLERANCE = 12;
+let lastTapAt = 0;
+let lastTapX = 0;
+let lastTapY = 0;
+const pointerDowns = new Map();
+let beepContext = null;
 
 function setState(mode) {
   state = mode;
@@ -186,6 +214,11 @@ async function speak(text) {
   stopSpeaking();
   const controller = new AbortController();
   ttsController = controller;
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, 10000);
   try {
     const response = await fetch(`${TTS_URL}?text=${encodeURIComponent(text)}&lang=${encodeURIComponent(lang)}`, {
       signal: controller.signal,
@@ -202,9 +235,11 @@ async function speak(text) {
     };
     await narrationAudio.play();
   } catch (err) {
-    if (err.name === "AbortError") return;
+    if (err.name === "AbortError" && !timedOut) return;
+    console.warn(timedOut ? "TTS timed out, using browser voice." : "TTS failed, using browser voice:", err);
     fallbackSpeak(text);
   } finally {
+    clearTimeout(timeout);
     if (ttsController === controller) ttsController = null;
   }
 }
@@ -257,15 +292,21 @@ function buildRecognition() {
     const suppressed = suppressEndSend;
     suppressEndSend = false;
     const transcript = finalTranscript.trim();
+    const mode = voiceMode;
     stopListening();
     if (suppressed) return;
-    if (transcript) askQuestion(transcript);
-    else setResult(lastDescription);
+    if (transcript) {
+      if (mode === "command") runVoiceCommand(transcript);
+      else askQuestion(transcript);
+    } else {
+      if (mode === "command") speak(commandMenuText());
+      setResult(lastDescription);
+    }
   };
   return instance;
 }
 
-function startListening() {
+function startListening(mode = "question") {
   if (listening) return;
   if (!SpeechRecognitionImpl) {
     showError("Voice input is not supported on this browser.");
@@ -273,6 +314,7 @@ function startListening() {
   }
   clearError();
   stopSpeaking();
+  voiceMode = mode;
   finalTranscript = "";
   suppressEndSend = false;
   recognition = recognition || buildRecognition();
@@ -353,6 +395,165 @@ micBtn.addEventListener("click", () => {
     startListening();
   }
 });
+
+function commandMenuText() {
+  return lang === "zh"
+    ? "说出命令：描述图片、切换语言，或打开网站。"
+    : "Say a command: describe image, change language, or open a website.";
+}
+
+function commandConfusedText() {
+  return lang === "zh"
+    ? "没有听清。请说：描述图片、切换语言，或打开网站。"
+    : "I didn't catch that. Say: describe image, change language, or open a website.";
+}
+
+function beep() {
+  try {
+    beepContext = beepContext || new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = beepContext.createOscillator();
+    const gain = beepContext.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.value = 880;
+    gain.gain.setValueAtTime(0.4, beepContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, beepContext.currentTime + 0.2);
+    oscillator.connect(gain);
+    gain.connect(beepContext.destination);
+    oscillator.start();
+    oscillator.stop(beepContext.currentTime + 0.25);
+  } catch {}
+}
+
+function startCommandListening() {
+  clearError();
+  stopSpeaking();
+  voiceMode = "command";
+  setResult(commandMenuText());
+  if (navigator.vibrate) {
+    try {
+      navigator.vibrate(80);
+    } catch {}
+  }
+  beep();
+  startListening("command");
+}
+
+function activateVoiceCommand() {
+  const now = Date.now();
+  if (now - lastVoiceActivationAt < 500) return;
+  lastVoiceActivationAt = now;
+  closeSettings();
+  if (listening) {
+    stopListening();
+    if (voiceMode === "command") {
+      setResult(lastDescription);
+      return;
+    }
+  }
+  startCommandListening();
+}
+
+function registerTap(point) {
+  const now = Date.now();
+  if (
+    now - lastTapAt <= DOUBLE_TAP_MS &&
+    Math.hypot(point.x - lastTapX, point.y - lastTapY) <= DOUBLE_TAP_DIST
+  ) {
+    lastTapAt = 0;
+    activateVoiceCommand();
+  } else {
+    lastTapAt = now;
+    lastTapX = point.x;
+    lastTapY = point.y;
+  }
+}
+
+function onStagePointerDown(event) {
+  pointerDowns.set(event.pointerId, { x: event.clientX, y: event.clientY });
+}
+
+function onStagePointerUp(event) {
+  const start = pointerDowns.get(event.pointerId);
+  pointerDowns.delete(event.pointerId);
+  if (!start) return;
+  if (event.target.closest("button")) return;
+  if (pointerDowns.size > 0) return;
+  if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > TAP_MOVE_TOLERANCE) return;
+  registerTap({ x: event.clientX, y: event.clientY });
+}
+
+function onStagePointerCancel(event) {
+  pointerDowns.delete(event.pointerId);
+}
+
+function shutterAction() {
+  if (analyzeController || askController || commandController || listening) {
+    if (pictureMode) cancelToPicture();
+    else cancelToLive();
+    return;
+  }
+  if (state === "analyzing") return;
+  if (pictureMode) analyze();
+  else if (cameraActive) freezeAndAnalyze();
+  else openCamera();
+}
+
+function executeCommand(data, transcript) {
+  const action = data && data.action;
+  if (action === "describe") {
+    shutterAction();
+  } else if (action === "language") {
+    const target = data.language;
+    if (target === "en" || target === "zh") {
+      if (target === lang) {
+        speak(lang === "zh" ? "已经是中文了。" : "The language is already English.");
+        return;
+      }
+      setLang(target);
+      speak(target === "zh" ? "已切换为中文。" : "Language changed to English.");
+    } else {
+      showError(commandConfusedText());
+    }
+  } else if (action === "open" && data.url) {
+    stopSpeaking();
+    location.href = data.url;
+  } else if (currentFile) {
+    askQuestion(transcript);
+  } else {
+    showError(commandConfusedText());
+  }
+}
+
+async function runVoiceCommand(command) {
+  if (!command) return;
+  clearError();
+  setResult(`Command: ${command}`);
+  const controller = new AbortController();
+  commandController = controller;
+  const form = new FormData();
+  form.append("command", command);
+  form.append("lang", lang);
+
+  try {
+    const response = await fetch(COMMAND_URL, {
+      method: "POST",
+      body: form,
+      signal: controller.signal,
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || data.detail || `Server error (${response.status}).`);
+    }
+    if (commandController === controller) commandController = null;
+    executeCommand(data, command);
+  } catch (err) {
+    if (err.name === "AbortError") return;
+    setResult(lastDescription);
+    showError(err.message);
+  } finally {
+    if (commandController === controller) commandController = null;
+  }
+}
 
 function showError(message) {
   errorBox.textContent = message;
@@ -663,6 +864,10 @@ function setFile(file) {
     askController.abort();
     askController = null;
   }
+  if (commandController) {
+    commandController.abort();
+    commandController = null;
+  }
   clearError();
   stopCamera();
   if (photoImg.src) URL.revokeObjectURL(photoImg.src);
@@ -745,6 +950,10 @@ function cancelToLive() {
     askController.abort();
     askController = null;
   }
+  if (commandController) {
+    commandController.abort();
+    commandController = null;
+  }
   stopListening();
   resumeLive();
 }
@@ -758,6 +967,10 @@ function cancelToPicture() {
   if (askController) {
     askController.abort();
     askController = null;
+  }
+  if (commandController) {
+    commandController.abort();
+    commandController = null;
   }
   stopListening();
   setState("frozen");
@@ -818,17 +1031,7 @@ async function analyze() {
   }
 }
 
-shutterBtn.addEventListener("click", () => {
-  if (analyzeController || askController || listening) {
-    if (pictureMode) cancelToPicture();
-    else cancelToLive();
-    return;
-  }
-  if (state === "analyzing") return;
-  if (pictureMode) analyze();
-  else if (cameraActive) freezeAndAnalyze();
-  else openCamera();
-});
+shutterBtn.addEventListener("click", shutterAction);
 
 photoBtn.addEventListener("click", () => {
   if (pictureMode) cancelToLive();
@@ -843,6 +1046,10 @@ viewWindow.addEventListener("touchstart", onTouchStart, { passive: true });
 viewWindow.addEventListener("touchmove", onTouchMove, { passive: false });
 viewWindow.addEventListener("touchend", onTouchEnd);
 viewWindow.addEventListener("touchcancel", onTouchEnd);
+
+stage.addEventListener("pointerdown", onStagePointerDown);
+stage.addEventListener("pointerup", onStagePointerUp);
+stage.addEventListener("pointercancel", onStagePointerCancel);
 
 document.addEventListener("gesturestart", (event) => event.preventDefault());
 document.addEventListener("gesturechange", (event) => event.preventDefault());

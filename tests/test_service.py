@@ -315,3 +315,164 @@ async def test_answer_question_rejects_unreadable_image(monkeypatch, tmp_path):
 
     with pytest.raises(ValueError):
         await service.answer_question(missing, "What is it?")
+
+
+def test_normalize_url_adds_https_and_strips_spaces():
+    assert service._normalize_url("example.com") == "https://example.com"
+    assert service._normalize_url(" https://example.com ") == "https://example.com"
+    assert service._normalize_url("http://example.com") == "http://example.com"
+    assert service._normalize_url("example.com/page") == "https://example.com/page"
+
+
+def test_normalize_url_fixes_speech_artifacts():
+    assert service._normalize_url("example dot com") == "https://example.com"
+    assert service._normalize_url("agents-demo dot github dot io slash imageblinds") == (
+        "https://agents-demo.github.io/imageblinds"
+    )
+    assert service._normalize_url("https colon slash slash example dot com") == (
+        "https://example.com"
+    )
+
+
+def test_normalize_url_rejects_invalid():
+    assert service._normalize_url("") is None
+    assert service._normalize_url("   ") is None
+    assert service._normalize_url("javascript:alert(1)") is None
+    assert service._normalize_url("...") is None
+
+
+@pytest.mark.asyncio
+async def test_interpret_command_returns_describe(monkeypatch):
+    fake = FakeModel("ACTION: describe")
+    monkeypatch.setattr(service.vision, "build_model", lambda: fake)
+
+    result = await service.interpret_command("describe the picture")
+
+    assert result == {"action": "describe"}
+    assert fake.messages is not None
+    assert fake.messages[0]["content"] == service.vision.COMMAND_PROMPT
+    assert fake.messages[1]["content"] == (
+        "Current app language: en\nSpoken command: describe the picture"
+    )
+
+
+@pytest.mark.asyncio
+async def test_interpret_command_returns_language(monkeypatch):
+    fake = FakeModel("ACTION: language LANGUAGE: zh")
+    monkeypatch.setattr(service.vision, "build_model", lambda: fake)
+
+    result = await service.interpret_command("switch to Chinese")
+
+    assert result == {"action": "language", "language": "zh"}
+
+
+@pytest.mark.asyncio
+async def test_interpret_command_rejects_unsupported_language(monkeypatch):
+    fake = FakeModel("ACTION: language LANGUAGE: fr")
+    monkeypatch.setattr(service.vision, "build_model", lambda: fake)
+
+    result = await service.interpret_command("switch to French")
+
+    assert result == {"action": "unknown"}
+
+
+@pytest.mark.asyncio
+async def test_interpret_command_returns_open(monkeypatch):
+    fake = FakeModel("ACTION: open URL: https://example.com")
+    monkeypatch.setattr(service.vision, "build_model", lambda: fake)
+
+    result = await service.interpret_command("open example.com")
+
+    assert result == {"action": "open", "url": "https://example.com"}
+
+
+@pytest.mark.asyncio
+async def test_interpret_command_normalizes_spoken_url(monkeypatch):
+    fake = FakeModel("ACTION: open URL: example dot com")
+    monkeypatch.setattr(service.vision, "build_model", lambda: fake)
+
+    result = await service.interpret_command("open example dot com")
+
+    assert result == {"action": "open", "url": "https://example.com"}
+
+
+@pytest.mark.asyncio
+async def test_interpret_command_unknown_for_garbage_reply(monkeypatch):
+    fake = FakeModel("I think the user wants something but I am not sure what.")
+    monkeypatch.setattr(service.vision, "build_model", lambda: fake)
+
+    assert await service.interpret_command("do the thing") == {"action": "unknown"}
+
+
+@pytest.mark.asyncio
+async def test_interpret_command_unknown_for_empty_reply(monkeypatch):
+    monkeypatch.setattr(service.vision, "build_model", lambda: FakeModel(""))
+
+    assert await service.interpret_command("blah blah") == {"action": "unknown"}
+
+
+@pytest.mark.asyncio
+async def test_interpret_command_keyword_fallback_describe(monkeypatch):
+    monkeypatch.setattr(service.vision, "build_model", lambda: FakeModel("ACTION: unknown"))
+
+    assert await service.interpret_command("tell me about the image") == {"action": "describe"}
+    assert await service.interpret_command("describe the scene") == {"action": "describe"}
+    assert await service.interpret_command("描述一下场景") == {"action": "describe"}
+
+
+@pytest.mark.asyncio
+async def test_interpret_command_keyword_fallback_language_toggle(monkeypatch):
+    monkeypatch.setattr(service.vision, "build_model", lambda: FakeModel("ACTION: unknown"))
+
+    assert await service.interpret_command("switch language") == {
+        "action": "language",
+        "language": "zh",
+    }
+    assert await service.interpret_command("切换语言", lang="zh") == {
+        "action": "language",
+        "language": "en",
+    }
+
+
+@pytest.mark.asyncio
+async def test_interpret_command_keyword_fallback_language_explicit(monkeypatch):
+    monkeypatch.setattr(service.vision, "build_model", lambda: FakeModel("ACTION: unknown"))
+
+    assert await service.interpret_command("speak Chinese") == {
+        "action": "language",
+        "language": "zh",
+    }
+    assert await service.interpret_command("说英语") == {
+        "action": "language",
+        "language": "en",
+    }
+
+
+@pytest.mark.asyncio
+async def test_interpret_command_falls_back_on_model_failure(monkeypatch):
+    class FailingModel:
+        async def invoke(self, messages):
+            raise ConnectionError("no network")
+
+    monkeypatch.setattr(service.vision, "build_model", lambda: FailingModel())
+
+    assert await service.interpret_command("describe the picture") == {"action": "describe"}
+    assert await service.interpret_command("blah blah") == {"action": "unknown"}
+
+
+def test_keyword_command_returns_none_for_unrelated_text():
+    assert service._keyword_command("hello there") is None
+
+
+def test_keyword_command_does_not_swallow_follow_up_questions():
+    assert service._keyword_command("what color is the chair") is None
+    assert service._keyword_command("is the milk expired") is None
+    assert service._keyword_command("how many people are there") is None
+
+
+@pytest.mark.asyncio
+async def test_interpret_command_question_stays_unknown_for_frontend_fallback(monkeypatch):
+    monkeypatch.setattr(service.vision, "build_model", lambda: FakeModel("ACTION: unknown"))
+
+    assert await service.interpret_command("what color is the chair") == {"action": "unknown"}
+    assert await service.interpret_command("is the milk expired") == {"action": "unknown"}

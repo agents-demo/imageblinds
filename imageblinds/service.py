@@ -13,6 +13,7 @@ import asyncio
 import base64
 import mimetypes
 import re
+import urllib.parse
 from pathlib import Path
 from typing import Any
 
@@ -130,6 +131,123 @@ async def answer_question(image_path: str | Path, question: str, lang: str = "en
     )
     content = getattr(reply, "content", None)
     return content.strip() if isinstance(content, str) else ""
+
+
+_COMMAND_ACTION_RE = re.compile(r"ACTION:\s*([a-zA-Z]+)")
+_COMMAND_LANGUAGE_RE = re.compile(r"LANGUAGE:\s*([a-zA-Z-]+)")
+_COMMAND_URL_RE = re.compile(r"URL:\s*([^\n]+)")
+
+_SPEECH_ARTIFACTS = (
+    (re.compile(r"(?<![a-zA-Z])dot(?![a-zA-Z])"), "."),
+    (re.compile(r"(?<![a-zA-Z])slash(?![a-zA-Z])"), "/"),
+    (re.compile(r"(?<![a-zA-Z])colon(?![a-zA-Z])"), ":"),
+    (re.compile(r"(?<![a-zA-Z])dash(?![a-zA-Z])"), "-"),
+    (re.compile(r"(?<![a-zA-Z])at(?![a-zA-Z])"), "@"),
+    (re.compile(r"(?<![a-zA-Z])plus(?![a-zA-Z])"), "+"),
+)
+
+
+def _normalize_url(raw: str) -> str | None:
+    """Clean a spoken URL: fix speech artifacts, add https:// when missing."""
+    url = raw.strip()
+    for pattern, replacement in _SPEECH_ARTIFACTS:
+        url = pattern.sub(replacement, url)
+    url = re.sub(r"\s+", "", url).strip(".,;:()[]{}'\"")
+    if not url:
+        return None
+    if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", url):
+        if not url.lower().startswith(("http://", "https://")):
+            return None
+    else:
+        if ":" in url:
+            return None
+        url = "https://" + url
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return None
+    return url
+
+
+def _parse_command(text: str) -> dict[str, Any]:
+    """Parse the model's fixed-format command reply into an action dict."""
+    action_match = _COMMAND_ACTION_RE.search(text)
+    if not action_match:
+        return {"action": "unknown"}
+    action = action_match.group(1).lower()
+    if action == "describe":
+        return {"action": "describe"}
+    if action == "language":
+        language_match = _COMMAND_LANGUAGE_RE.search(text)
+        target = language_match.group(1).lower() if language_match else ""
+        if not vision.is_lang(target):
+            return {"action": "unknown"}
+        return {"action": "language", "language": target}
+    if action == "open":
+        url_match = _COMMAND_URL_RE.search(text)
+        url = _normalize_url(url_match.group(1)) if url_match else None
+        if not url:
+            return {"action": "unknown"}
+        return {"action": "open", "url": url}
+    return {"action": "unknown"}
+
+
+_LANGUAGE_KEYWORD_RE = re.compile(
+    r"language|english|chinese|中文|英文|英语|语言|切换", re.IGNORECASE
+)
+_DESCRIBE_KEYWORD_RE = re.compile(
+    r"describe|analy[sz]e|read|snap|capture|picture|photo|image|scene"
+    r"|描述|图片|照片|图像|场景|看看|读|介绍|识别",
+    re.IGNORECASE,
+)
+_ZH_LANGUAGE_RE = re.compile(r"中文|chinese", re.IGNORECASE)
+_EN_LANGUAGE_RE = re.compile(r"english|英文|英语", re.IGNORECASE)
+
+
+def _keyword_command(command: str, lang: str = "en") -> dict[str, Any] | None:
+    """Forgiving keyword fallback for natural phrasings the model missed."""
+    if _LANGUAGE_KEYWORD_RE.search(command):
+        if _ZH_LANGUAGE_RE.search(command):
+            return {"action": "language", "language": "zh"}
+        if _EN_LANGUAGE_RE.search(command):
+            return {"action": "language", "language": "en"}
+        return {"action": "language", "language": "zh" if lang == "en" else "en"}
+    if _DESCRIBE_KEYWORD_RE.search(command):
+        return {"action": "describe"}
+    return None
+
+
+async def interpret_command(command: str, lang: str = "en") -> dict[str, Any]:
+    """Classify a spoken voice command into an action dict (text-only call).
+
+    Returns one of ``{"action": "describe"}``,
+    ``{"action": "language", "language": "en"|"zh"}``,
+    ``{"action": "open", "url": ...}`` or ``{"action": "unknown"}``. When the
+    model fails or cannot classify the command, a forgiving keyword fallback
+    covers common phrasings ("describe the scene", "tell me about the image",
+    "switch language"), so natural speech keeps working.
+    """
+    model = vision.build_model()
+    try:
+        reply = await asyncio.wait_for(
+            model.invoke(
+                [
+                    {"role": "system", "content": vision.COMMAND_PROMPT},
+                    {
+                        "role": "user",
+                        "content": f"Current app language: {lang}\nSpoken command: {command}",
+                    },
+                ]
+            ),
+            timeout=float(settings.llm_timeout()),
+        )
+    except Exception:  # noqa: BLE001 - the keyword fallback takes over
+        reply = None
+    content = getattr(reply, "content", None) if reply is not None else None
+    text = content.strip() if isinstance(content, str) else ""
+    result = _parse_command(text)
+    if result["action"] != "unknown":
+        return result
+    return _keyword_command(command, lang) or result
 
 
 def _dsml_target(text: str) -> str | None:
