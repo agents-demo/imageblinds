@@ -29,7 +29,7 @@ def ensure_workspace() -> Path:
     return WORKSPACE_DIR
 
 
-def _build_agent() -> Any:
+def _build_agent(lang: str = "en") -> Any:
     """Build a fresh vision agent for one request.
 
     The openjiuwen filesystem service (SQLite + rwlocks) is tied to the
@@ -38,7 +38,7 @@ def _build_agent() -> Any:
     "Cannot release a lock ... that is not held by this task"), so a new
     agent is built per analysis.
     """
-    return vision.build_vision_agent(str(ensure_workspace()))
+    return vision.build_vision_agent(str(ensure_workspace()), lang=lang)
 
 
 async def run_agent(agent: Any, query: str) -> Any:
@@ -77,7 +77,7 @@ def _data_url(image_path: str) -> str | None:
     return f"data:{mime};base64,{encoded}"
 
 
-async def _ask_model_directly(image_path: str) -> str:
+async def _ask_model_directly(image_path: str, lang: str = "en") -> str:
     """Send the image bytes straight to the model as a multimodal message."""
     data_url = _data_url(image_path)
     if data_url is None:
@@ -85,17 +85,13 @@ async def _ask_model_directly(image_path: str) -> str:
     model = vision.build_model()
     reply = await model.invoke(
         [
-            {"role": "system", "content": vision.SYSTEM_PROMPT},
+            {"role": "system", "content": vision.system_prompt(lang)},
             {
                 "role": "user",
                 "content": [
                     {
                         "type": "text",
-                        "text": (
-                            "Describe the image in detail: the main object(s), "
-                            "their color, material, shape, parts, and surroundings. "
-                            "Two or three sentences."
-                        ),
+                        "text": vision.direct_describe_text(lang),
                     },
                     {"type": "image_url", "image_url": {"url": data_url}},
                 ],
@@ -106,7 +102,7 @@ async def _ask_model_directly(image_path: str) -> str:
     return content.strip() if isinstance(content, str) else ""
 
 
-async def answer_question(image_path: str | Path, question: str) -> str:
+async def answer_question(image_path: str | Path, question: str, lang: str = "en") -> str:
     """Answer a follow-up question about ``image_path`` with the vision model.
 
     The image is sent to the model directly as a multimodal message together
@@ -120,7 +116,7 @@ async def answer_question(image_path: str | Path, question: str) -> str:
     reply = await asyncio.wait_for(
         model.invoke(
             [
-                {"role": "system", "content": vision.QUESTION_PROMPT},
+                {"role": "system", "content": vision.question_prompt(lang)},
                 {
                     "role": "user",
                     "content": [
@@ -148,7 +144,9 @@ def _dsml_target(text: str) -> str | None:
 _UNABLE_TO_READ_RE = re.compile(
     r"can'?t read|cannot read|unable to read|unable to describe"
     r"|no (?:actual )?visual data|not available|don'?t have access|no access"
-    r"|without completion|read_file.{0,60}fail|infrastructure errors",
+    r"|without completion|read_file.{0,60}fail|infrastructure errors"
+    r"|无法读取|无法描述|无法查看|读取失败|描述失败|没有访问权限|无法访问"
+    r"|看不到图像|图片.{0,20}失败",
     re.IGNORECASE,
 )
 
@@ -159,7 +157,7 @@ def _looks_like_read_failure(text: str) -> bool:
     return _UNABLE_TO_READ_RE.search(text) is not None
 
 
-async def describe_image(image_path: str | Path) -> str:
+async def describe_image(image_path: str | Path, lang: str = "en") -> str:
     """Ask the vision agent what is in ``image_path`` and return its answer.
 
     If the agent run times out, errors, or replies with an unexecuted tool
@@ -167,8 +165,8 @@ async def describe_image(image_path: str | Path) -> str:
     multimodal message.
     """
     path = str(image_path)
-    agent = _build_agent()
-    query = f"Read the image at {path} and describe what is in it."
+    agent = _build_agent(lang=lang)
+    query = vision.agent_query(path, lang)
     try:
         result = await asyncio.wait_for(run_agent(agent, query), timeout=AGENT_TIMEOUT_SECONDS)
     except Exception:  # noqa: BLE001 - the direct path is the fallback
@@ -179,7 +177,7 @@ async def describe_image(image_path: str | Path) -> str:
     target = _dsml_target(text)
     if run_failed or target is not None or _looks_like_read_failure(text):
         try:
-            direct = await _ask_model_directly(target or path)
+            direct = await _ask_model_directly(target or path, lang=lang)
         except Exception:  # noqa: BLE001 - the agent path already failed to read
             direct = ""
         if direct:

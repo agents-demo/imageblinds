@@ -34,6 +34,62 @@ QUESTION_PROMPT = (
     "short sentences, one idea per sentence, and active voice."
 )
 
+SYSTEM_PROMPT_ZH = (
+    "你是一名图像分析员。使用 read_file 工具读取图像，并用纯文本详细描述图像内容："
+    "主要物体、其颜色、材质、形状、部件以及周围环境。写两到三句话。"
+    "不要输出 JSON、Markdown 或任何前言。"
+    "使用简短句子，每句只表达一个意思，并使用主动语态。"
+)
+
+QUESTION_PROMPT_ZH = (
+    "你是一名图像分析员。查看图像并直接、简洁地回答用户关于该图像的问题。"
+    "只回答问题的答案：不要重新描述整幅图像，也不要重复问题。"
+    "一到三句话。不要输出 JSON、Markdown 或任何前言。"
+    "使用简短句子，每句只表达一个意思，并使用主动语态。"
+)
+
+DIRECT_DESCRIBE_ZH = (
+    "详细描述图像：主要物体、其颜色、材质、形状、部件和周围环境。两到三句话。"
+)
+
+AGENT_QUERY_ZH = "读取位于 {path} 的图像并描述其中的内容。"
+
+AGENT_QUERY_EN = "Read the image at {path} and describe what is in it."
+
+_LANGS = ("en", "zh")
+
+
+def is_lang(lang: str) -> bool:
+    """Whether ``lang`` is a supported language code."""
+    return lang in _LANGS
+
+
+def system_prompt(lang: str = "en") -> str:
+    """The description system prompt for the requested language."""
+    return SYSTEM_PROMPT_ZH if lang == "zh" else SYSTEM_PROMPT
+
+
+def question_prompt(lang: str = "en") -> str:
+    """The follow-up-question system prompt for the requested language."""
+    return QUESTION_PROMPT_ZH if lang == "zh" else QUESTION_PROMPT
+
+
+def agent_query(path: str, lang: str = "en") -> str:
+    """The agent instruction that asks it to read and describe an image."""
+    template = AGENT_QUERY_ZH if lang == "zh" else AGENT_QUERY_EN
+    return template.format(path=path)
+
+
+def direct_describe_text(lang: str = "en") -> str:
+    """The user text attached to the image in the direct multimodal call."""
+    if lang == "zh":
+        return DIRECT_DESCRIBE_ZH
+    return (
+        "Describe the image in detail: the main object(s), "
+        "their color, material, shape, parts, and surroundings. "
+        "Two or three sentences."
+    )
+
 
 def build_model() -> Any:
     """Construct an openjiuwen ``Model`` for the configured provider/endpoint."""
@@ -58,7 +114,7 @@ def build_model() -> Any:
     return Model(model_client_config=client, model_config=request)
 
 
-def build_vision_agent(workspace: str | None = None) -> Any:
+def build_vision_agent(workspace: str | None = None, lang: str = "en") -> Any:
     """Build the multimodal vision DeepAgent (reads images via ``read_file``).
 
     The SysOperationRail mounts ``read_file`` and the other filesystem tools;
@@ -70,7 +126,7 @@ def build_vision_agent(workspace: str | None = None) -> Any:
 
     return create_deep_agent(
         model=build_model(),
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=system_prompt(lang),
         tools=[],
         rails=[SysOperationRail()],
         enable_task_loop=False,

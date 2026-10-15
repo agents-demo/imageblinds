@@ -64,6 +64,87 @@ header h1 {
   color: var(--accent);
 }
 
+#settings-wrap {
+  position: absolute;
+  left: max(1rem, env(safe-area-inset-left));
+  top: 50%;
+  margin-top: -22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: auto;
+}
+
+#settings-btn {
+  width: 44px;
+  height: 44px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(16, 20, 24, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  padding: 0;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+#settings-btn svg {
+  width: 24px;
+  height: 24px;
+  color: #fff;
+  pointer-events: none;
+}
+
+#settings-btn:active,
+#settings-btn.open {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: var(--accent);
+}
+
+#settings-panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: rgba(26, 32, 40, 0.95);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.5);
+}
+
+#settings-panel button {
+  width: 52px;
+  height: 38px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+#settings-panel button.active {
+  border-color: var(--accent);
+  background: rgba(79, 156, 249, 0.15);
+}
+
+#settings-panel button:active {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+#settings-panel .flag {
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+
 #stage {
   position: fixed;
   inset: 0;

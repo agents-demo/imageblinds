@@ -78,7 +78,7 @@ async def test_describe_image_falls_back_to_direct_model_on_dsml_reply(
 
     calls: dict = {}
 
-    async def fake_direct(image_path):
+    async def fake_direct(image_path, lang="en"):
         calls["image_path"] = str(image_path)
         return "This image shows a chair."
 
@@ -101,7 +101,7 @@ async def test_describe_image_falls_back_on_iteration_limit(
     async def fake_run_agent(agent, query):
         return {"output": "Max iterations reached without completion", "result_type": "error"}
 
-    async def fake_direct(image_path):
+    async def fake_direct(image_path, lang="en"):
         return "This image shows a chair."
 
     monkeypatch.setattr(service, "run_agent", fake_run_agent)
@@ -128,7 +128,7 @@ async def test_describe_image_falls_back_on_fs_failure_reply(
             "result_type": "answer",
         }
 
-    async def fake_direct(image_path):
+    async def fake_direct(image_path, lang="en"):
         return "This image shows a chair."
 
     monkeypatch.setattr(service, "run_agent", fake_run_agent)
@@ -149,7 +149,7 @@ async def test_describe_image_falls_back_when_agent_run_times_out(
     async def fake_run_agent(agent, query):
         raise TimeoutError
 
-    async def fake_direct(image_path):
+    async def fake_direct(image_path, lang="en"):
         return "This image shows a chair."
 
     monkeypatch.setattr(service, "run_agent", fake_run_agent)
@@ -175,7 +175,7 @@ async def test_describe_image_ignores_dsml_paths_that_do_not_exist(
     async def fake_run_agent(agent, query):
         return {"output": dsml_reply, "result_type": "answer"}
 
-    async def fake_direct(_image_path):
+    async def fake_direct(_image_path, lang="en"):
         raise AssertionError("direct call must not run for a missing path")
 
     monkeypatch.setattr(service, "run_agent", fake_run_agent)
@@ -202,7 +202,7 @@ async def test_describe_image_falls_back_when_agent_cannot_read(
 
     calls: dict = {}
 
-    async def fake_direct(image_path):
+    async def fake_direct(image_path, lang="en"):
         calls["image_path"] = str(image_path)
         return "This image shows a chair."
 
@@ -253,6 +253,58 @@ async def test_answer_question_empty_reply(monkeypatch, tmp_path):
     monkeypatch.setattr(service.vision, "build_model", lambda: FakeModel(""))
 
     assert await service.answer_question(image, "What is it?") == ""
+
+
+@pytest.mark.asyncio
+async def test_answer_question_uses_chinese_prompt(monkeypatch, tmp_path):
+    image = tmp_path / "chair.jpg"
+    image.write_bytes(b"\xff\xd8\xff")
+
+    fake = FakeModel("这是木制的。")
+    monkeypatch.setattr(service.vision, "build_model", lambda: fake)
+
+    answer = await service.answer_question(image, "它是什么做的？", lang="zh")
+
+    assert answer == "这是木制的。"
+    assert fake.messages is not None
+    assert fake.messages[0]["content"] == service.vision.QUESTION_PROMPT_ZH
+
+
+@pytest.mark.asyncio
+async def test_describe_image_uses_chinese_query(stub_pipeline, tmp_path):
+    image = tmp_path / "chair.jpg"
+    image.write_bytes(b"\xff\xd8\xff")
+
+    await service.describe_image(image, lang="zh")
+
+    assert stub_pipeline.last_query is not None
+    assert "读取" in stub_pipeline.last_query
+    assert str(image) in stub_pipeline.last_query
+
+
+@pytest.mark.asyncio
+async def test_describe_image_falls_back_on_chinese_read_failure(
+    monkeypatch, stub_pipeline, tmp_path
+):
+    image = tmp_path / "chair.jpg"
+    image.write_bytes(b"\xff\xd8\xff")
+
+    async def fake_run_agent(agent, query):
+        return {"output": "无法读取该图像，因为 read_file 工具不可用。", "result_type": "answer"}
+
+    calls: dict = {}
+
+    async def fake_direct(image_path, lang="en"):
+        calls["lang"] = lang
+        return "This image shows a chair."
+
+    monkeypatch.setattr(service, "run_agent", fake_run_agent)
+    monkeypatch.setattr(service, "_ask_model_directly", fake_direct)
+
+    text = await service.describe_image(image, lang="zh")
+
+    assert text == "This image shows a chair."
+    assert calls.get("lang") == "zh"
 
 
 @pytest.mark.asyncio

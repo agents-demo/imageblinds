@@ -10,8 +10,9 @@ from imageblinds import server, service, tts
 from imageblinds.server import app
 
 
-async def _fake_describe(image_path):
+async def _fake_describe(image_path, lang="en"):
     assert str(image_path).endswith(".jpg")
+    assert lang in {"en", "zh"}
     return "This image shows a chair."
 
 
@@ -54,8 +55,55 @@ def test_analyze_requires_file(monkeypatch):
     assert response.status_code == 422
 
 
-async def _fake_answer(image_path, question):
+def test_analyze_passes_language_to_service(monkeypatch):
+    calls: dict = {}
+
+    async def _capturing_describe(image_path, lang="en"):
+        calls["lang"] = lang
+        return "这是一把椅子。"
+
+    monkeypatch.setattr(service, "describe_image", _capturing_describe)
+    client = TestClient(app)
+    response = client.post(
+        "/api/analyze",
+        files={"file": ("chair.jpg", b"\xff\xd8\xff\xd9", "image/jpeg")},
+        data={"lang": "zh"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"description": "这是一把椅子。"}
+    assert calls.get("lang") == "zh"
+
+
+def test_analyze_defaults_to_english(monkeypatch):
+    calls: dict = {}
+
+    async def _capturing_describe(image_path, lang="en"):
+        calls["lang"] = lang
+        return "A chair."
+
+    monkeypatch.setattr(service, "describe_image", _capturing_describe)
+    client = TestClient(app)
+    response = client.post(
+        "/api/analyze",
+        files={"file": ("chair.jpg", b"\xff\xd8\xff\xd9", "image/jpeg")},
+    )
+    assert response.status_code == 200
+    assert calls.get("lang") == "en"
+
+
+def test_analyze_rejects_unknown_language(monkeypatch):
+    client = _client(monkeypatch)
+    response = client.post(
+        "/api/analyze",
+        files={"file": ("chair.jpg", b"\xff\xd8\xff\xd9", "image/jpeg")},
+        data={"lang": "fr"},
+    )
+    assert response.status_code == 422
+
+
+async def _fake_answer(image_path, question, lang="en"):
     assert str(image_path).endswith(".jpg")
+    assert lang in {"en", "zh"}
     return f"A: {question}"
 
 
@@ -110,6 +158,36 @@ def test_ask_requires_question(monkeypatch):
     assert response.status_code == 422
 
 
+def test_ask_passes_language_to_service(monkeypatch):
+    calls: dict = {}
+
+    async def _capturing_answer(image_path, question, lang="en"):
+        calls["lang"] = lang
+        return f"A: {question}"
+
+    monkeypatch.setattr(service, "answer_question", _capturing_answer)
+    client = TestClient(app)
+    response = client.post(
+        "/api/ask",
+        files={"file": ("chair.jpg", b"\xff\xd8\xff\xd9", "image/jpeg")},
+        data={"question": "它是什么做的？", "lang": "zh"},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"answer": "A: 它是什么做的？"}
+    assert calls.get("lang") == "zh"
+
+
+def test_ask_rejects_unknown_language(monkeypatch):
+    monkeypatch.setattr(service, "answer_question", _fake_answer)
+    client = TestClient(app)
+    response = client.post(
+        "/api/ask",
+        files={"file": ("chair.jpg", b"\xff\xd8\xff\xd9", "image/jpeg")},
+        data={"question": "What is it?", "lang": "de"},
+    )
+    assert response.status_code == 422
+
+
 def test_ask_rejects_blank_question(monkeypatch):
     monkeypatch.setattr(service, "answer_question", _fake_answer)
     client = TestClient(app)
@@ -133,7 +211,7 @@ def test_ask_rejects_overlong_question(monkeypatch):
 
 
 def test_ask_error_returns_500(monkeypatch):
-    async def _failing_answer(image_path, question):
+    async def _failing_answer(image_path, question, lang="en"):
         raise ConnectionError("no network")
 
     monkeypatch.setattr(service, "answer_question", _failing_answer)
@@ -155,7 +233,7 @@ def test_index_serves_gui(monkeypatch):
 
 
 def test_tts_returns_mp3(monkeypatch):
-    async def _fake_synthesize(text):
+    async def _fake_synthesize(text, lang="en"):
         return b"ID3fake-mp3-bytes"
 
     monkeypatch.setattr(tts, "synthesize", _fake_synthesize)
@@ -165,6 +243,25 @@ def test_tts_returns_mp3(monkeypatch):
     assert response.headers["content-type"] == "audio/mpeg"
     assert "max-age" in response.headers["cache-control"]
     assert response.content == b"ID3fake-mp3-bytes"
+
+
+def test_tts_uses_chinese_voice_for_zh(monkeypatch):
+    calls: dict = {}
+
+    async def _fake_synthesize(text, lang="en"):
+        calls["lang"] = lang
+        return b"ID3fake-mp3-bytes"
+
+    monkeypatch.setattr(tts, "synthesize", _fake_synthesize)
+    client = _client(monkeypatch)
+    response = client.get("/api/tts", params={"text": "这是一把椅子。", "lang": "zh"})
+    assert response.status_code == 200
+    assert calls.get("lang") == "zh"
+
+
+def test_tts_rejects_unknown_language(monkeypatch):
+    client = _client(monkeypatch)
+    assert client.get("/api/tts", params={"text": "hello", "lang": "fr"}).status_code == 422
 
 
 def test_tts_rejects_empty_text(monkeypatch):
@@ -180,7 +277,7 @@ def test_tts_rejects_overlong_text(monkeypatch):
 
 
 def test_tts_error_returns_502(monkeypatch):
-    async def _failing_synthesize(text):
+    async def _failing_synthesize(text, lang="en"):
         raise ConnectionError("no network")
 
     monkeypatch.setattr(tts, "synthesize", _failing_synthesize)
@@ -197,6 +294,9 @@ def test_index_includes_camera_controls(monkeypatch):
     assert 'id="shutter-btn"' in page.text
     assert 'id="photo-btn"' in page.text
     assert 'id="mic-btn"' in page.text
+    assert 'id="settings-btn"' in page.text
+    assert 'id="lang-en"' in page.text
+    assert 'id="lang-zh"' in page.text
     assert 'aria-live="polite"' in page.text
 
     script = client.get("/assets/app.js")
@@ -205,6 +305,8 @@ def test_index_includes_camera_controls(monkeypatch):
     assert "/api/tts" in script.text
     assert "/api/ask" in script.text
     assert "SpeechRecognition" in script.text
+    assert "imageblinds.lang" in script.text
+    assert "lang-zh" in script.text
 
 
 def test_index_links_manifest_and_registers_worker(monkeypatch):

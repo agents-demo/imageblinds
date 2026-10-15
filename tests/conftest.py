@@ -29,6 +29,6 @@ def stub_pipeline(monkeypatch, stub_agent):
         agent.last_query = query
         return {"output": "This image shows a chair."}
 
-    monkeypatch.setattr(service, "_build_agent", lambda: stub_agent)
+    monkeypatch.setattr(service, "_build_agent", lambda lang="en": stub_agent)
     monkeypatch.setattr(service, "run_agent", fake_run_agent)
     return stub_agent

@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from imageblinds import service, tts
+from imageblinds import service, tts, vision
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT / "static"
@@ -202,13 +202,15 @@ async def _run_until_disconnect(request: Request, task: asyncio.Task) -> bool:
 
 
 @app.get("/api/tts")
-async def tts_audio(request: Request, text: str = "") -> Response:
+async def tts_audio(request: Request, text: str = "", lang: str = "en") -> Response:
     """Synthesize narration audio with a neural voice (edge-tts)."""
     if not text.strip():
         raise HTTPException(status_code=400, detail="Missing text to narrate.")
     if len(text) > tts.MAX_CHARS:
         raise HTTPException(status_code=422, detail=f"Text too long (max {tts.MAX_CHARS} chars).")
-    task = asyncio.create_task(tts.synthesize(text))
+    if not vision.is_lang(lang):
+        raise HTTPException(status_code=422, detail=f"Unsupported language: {lang}.")
+    task = asyncio.create_task(tts.synthesize(text, lang=lang))
     if not await _run_until_disconnect(request, task):
         return JSONResponse(status_code=499, content={"error": "Client disconnected."})
     try:
@@ -239,13 +241,19 @@ async def _save_upload(file: UploadFile) -> tuple[tuple[int, str] | None, Path |
 
 
 @app.post("/api/analyze")
-async def analyze(request: Request, file: Annotated[UploadFile, File()]) -> JSONResponse:
+async def analyze(
+    request: Request,
+    file: Annotated[UploadFile, File()],
+    lang: Annotated[str, Form()] = "en",
+) -> JSONResponse:
+    if not vision.is_lang(lang):
+        raise HTTPException(status_code=422, detail=f"Unsupported language: {lang}.")
     failure, image_path = await _save_upload(file)
     if failure:
         raise HTTPException(status_code=failure[0], detail=failure[1])
     assert image_path is not None
 
-    task = asyncio.create_task(service.describe_image(image_path))
+    task = asyncio.create_task(service.describe_image(image_path, lang=lang))
     if not await _run_until_disconnect(request, task):
         return JSONResponse(status_code=499, content={"error": "Client disconnected."})
     try:
@@ -261,6 +269,7 @@ async def ask(
     request: Request,
     file: Annotated[UploadFile, File()],
     question: Annotated[str, Form()] = "",
+    lang: Annotated[str, Form()] = "en",
 ) -> JSONResponse:
     """Answer a follow-up question about an uploaded image."""
     question = question.strip()
@@ -268,13 +277,15 @@ async def ask(
         raise HTTPException(status_code=422, detail="Missing question.")
     if len(question) > MAX_QUESTION_CHARS:
         raise HTTPException(status_code=422, detail=f"Question too long (max {MAX_QUESTION_CHARS} chars).")
+    if not vision.is_lang(lang):
+        raise HTTPException(status_code=422, detail=f"Unsupported language: {lang}.")
 
     failure, image_path = await _save_upload(file)
     if failure:
         raise HTTPException(status_code=failure[0], detail=failure[1])
     assert image_path is not None
 
-    task = asyncio.create_task(service.answer_question(image_path, question))
+    task = asyncio.create_task(service.answer_question(image_path, question, lang=lang))
     if not await _run_until_disconnect(request, task):
         return JSONResponse(status_code=499, content={"error": "Client disconnected."})
     try:

@@ -11,11 +11,80 @@ const errorPanel = document.getElementById("error-panel");
 const errorBox = document.getElementById("error");
 const certBanner = document.getElementById("cert-banner");
 const fileInput = document.getElementById("file-input");
+const settingsBtn = document.getElementById("settings-btn");
+const settingsPanel = document.getElementById("settings-panel");
+const langEnBtn = document.getElementById("lang-en");
+const langZhBtn = document.getElementById("lang-zh");
 
 if (location.protocol === "http:" && !["localhost", "127.0.0.1"].includes(location.hostname)) {
   certBanner.hidden = false;
 }
 
+function storedLang() {
+  try {
+    return localStorage.getItem("imageblinds.lang") === "zh" ? "zh" : "en";
+  } catch {
+    return "en";
+  }
+}
+
+let lang = storedLang();
+
+function applyLang() {
+  langEnBtn.classList.toggle("active", lang === "en");
+  langZhBtn.classList.toggle("active", lang === "zh");
+  langEnBtn.setAttribute("aria-checked", lang === "en" ? "true" : "false");
+  langZhBtn.setAttribute("aria-checked", lang === "zh" ? "true" : "false");
+  if (recognition) recognition = null;
+  pickVoice();
+}
+
+function setLang(next) {
+  if (next !== "en" && next !== "zh") return;
+  if (lang === next) {
+    closeSettings();
+    return;
+  }
+  lang = next;
+  try {
+    localStorage.setItem("imageblinds.lang", lang);
+  } catch {}
+  stopListening();
+  applyLang();
+  closeSettings();
+}
+
+function toggleSettings() {
+  settingsPanel.hidden = !settingsPanel.hidden;
+  settingsBtn.classList.toggle("open", !settingsPanel.hidden);
+}
+
+function closeSettings() {
+  settingsPanel.hidden = true;
+  settingsBtn.classList.remove("open");
+}
+
+let lastPointerdownAt = 0;
+
+function onActivate(element, handler) {
+  element.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    lastPointerdownAt = Date.now();
+    handler(event);
+  });
+  element.addEventListener("click", (event) => {
+    if (Date.now() - lastPointerdownAt < 400) return;
+    handler(event);
+  });
+}
+
+onActivate(settingsBtn, toggleSettings);
+onActivate(langEnBtn, () => setLang("en"));
+onActivate(langZhBtn, () => setLang("zh"));
+document.addEventListener("pointerdown", (event) => {
+  if (settingsPanel.hidden) return;
+  if (!settingsPanel.contains(event.target) && !settingsBtn.contains(event.target)) closeSettings();
+});
 const configuredBase = (window.IMAGEBLINDS_API_BASE || "").trim();
 const API_URL =
   configuredBase && configuredBase !== "__API_BASE__" ? configuredBase + "/api/analyze" : "/api/analyze";
@@ -95,8 +164,9 @@ function pickVoice() {
   if (!synth) return;
   const voices = synth.getVoices();
   if (!voices.length) return;
+  const prefix = lang === "zh" ? "zh" : "en";
   voice =
-    voices.find((item) => item.lang && item.lang.toLowerCase().startsWith("en")) ||
+    voices.find((item) => item.lang && item.lang.toLowerCase().startsWith(prefix)) ||
     voices.find((item) => item.default) ||
     voices[0];
 }
@@ -117,7 +187,7 @@ async function speak(text) {
   const controller = new AbortController();
   ttsController = controller;
   try {
-    const response = await fetch(`${TTS_URL}?text=${encodeURIComponent(text)}`, {
+    const response = await fetch(`${TTS_URL}?text=${encodeURIComponent(text)}&lang=${encodeURIComponent(lang)}`, {
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`TTS error (${response.status}).`);
@@ -159,7 +229,7 @@ if (synth) {
 
 function buildRecognition() {
   const instance = new SpeechRecognitionImpl();
-  instance.lang = "en-US";
+  instance.lang = lang === "zh" ? "zh-CN" : "en-US";
   instance.interimResults = true;
   instance.continuous = false;
   instance.onresult = (event) => {
@@ -249,6 +319,7 @@ async function askQuestion(question) {
   const form = new FormData();
   form.append("file", currentFile);
   form.append("question", question);
+  form.append("lang", lang);
 
   try {
     const response = await fetch(ASK_URL, {
@@ -659,7 +730,9 @@ async function freezeAndAnalyze() {
 function resumeLive() {
   hideResult();
   stopSpeaking();
-  openCamera();
+applyLang();
+
+openCamera();
 }
 
 function cancelToLive() {
@@ -718,6 +791,7 @@ async function analyze() {
   analyzeController = controller;
   const form = new FormData();
   form.append("file", file);
+  form.append("lang", lang);
 
   try {
     const response = await fetch(API_URL, {
